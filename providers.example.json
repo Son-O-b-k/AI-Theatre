@@ -1,0 +1,20 @@
+{
+  "providers": [
+    { "id": "ollama", "label": "Ollama (local)", "kind": "ollama" },
+    {
+      "id": "anthropic",
+      "label": "Anthropic",
+      "kind": "anthropic",
+      "apiKey": "env:ANTHROPIC_API_KEY",
+      "models": ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"]
+    },
+    { "id": "openai", "label": "OpenAI", "kind": "openai", "apiKey": "env:OPENAI_API_KEY" },
+    {
+      "id": "openrouter",
+      "label": "OpenRouter",
+      "kind": "openai",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "apiKey": "env:OPENROUTER_API_KEY"
+    }
+  ]
+}
