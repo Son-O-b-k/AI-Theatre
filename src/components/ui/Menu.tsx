@@ -36,7 +36,7 @@ export function Menu({ trigger, children, align = 'end', side = 'bottom' }: Menu
           role="menu"
           onClick={() => setOpen(false)}
           className={cx(
-            'absolute z-30 max-h-[70vh] w-max min-w-64 overflow-y-auto rounded-xl border border-line-strong bg-raised/95 p-1.5 shadow-2xl shadow-black/50 backdrop-blur',
+            'absolute z-30 max-h-[70vh] w-max min-w-64 overflow-y-auto rounded-xl border border-line-strong bg-raised p-1.5 shadow-xl shadow-ink/10',
             align === 'end' ? 'right-0' : 'left-0',
             side === 'bottom' ? 'top-full mt-2' : 'bottom-full mb-2',
           )}
@@ -68,7 +68,7 @@ export function MenuItem({ icon: Icon, children, hint, danger, disabled, checked
       onClick={onSelect}
       className={cx(
         'flex w-full cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 text-left text-[13px] transition',
-        'hover:bg-white/6 disabled:pointer-events-none disabled:opacity-40',
+        'hover:bg-tint disabled:pointer-events-none disabled:opacity-40',
         danger ? 'text-danger' : 'text-ink',
       )}
     >

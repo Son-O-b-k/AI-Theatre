@@ -1,11 +1,16 @@
-import { useCallback, useRef, useState } from 'react'
-import { generateScene, planLesson, type ModelTarget } from '../ai/generate'
-import { chapterMessages, refineMessages, sceneMessages } from '../ai/prompts'
+// Lessons are written on the server (server/lessons/jobs.ts); this hook starts a job, shows its
+// progress, and adds each finished chapter to the project. The app is the only writer of its
+// projects, so a chapter is confirmed to the server ("claimed") once it has been saved here.
+// Chapters finished while the app was closed are collected when their project is opened.
+
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { Delivery, JobEvent, JobMode, ModelTarget } from '../../shared/protocol'
+import { api } from '../api'
 import { record, unrecorded, withNarration } from '../narration'
-import { newOutput, retimed, reviseOutput, type Output, type Project, type Turn } from '../project'
+import { retimed, titleFrom, type Output, type Project } from '../project'
 import type { Scene } from '../scene/schema'
 
-export type Mode = 'teach' | 'scene' | 'refine'
+export type Mode = JobMode
 
 interface Options {
   target: ModelTarget
@@ -15,17 +20,18 @@ interface Options {
   output: Output | null
   create(name: string): Promise<Project>
   update(change: (project: Project) => Project): void
+  /** Saves pending project changes now. */
+  save(): Promise<void>
   select(outputId: string): void
   onError(error: unknown): void
 }
 
-const titleFrom = (prompt: string) => (prompt.length > 48 ? `${prompt.slice(0, 45)}…` : prompt)
-
-const addOutput = (output: Output) => (project: Project) => ({ ...project, outputs: [...project.outputs, output] })
-
-const replaceOutput = (output: Output) => (project: Project) => ({
+/** Adds a delivered chapter, or replaces the chapter it revises. */
+const applyOutput = (output: Output) => (project: Project) => ({
   ...project,
-  outputs: project.outputs.map((o) => (o.id === output.id ? output : o)),
+  outputs: project.outputs.some((o) => o.id === output.id)
+    ? project.outputs.map((o) => (o.id === output.id ? output : o))
+    : [...project.outputs, output],
 })
 
 /** Applies recorded clips to the newest copy of a chapter, in case it was edited while recording. */
@@ -34,115 +40,132 @@ const narrateOutput = (id: string, voice: string, clips: Awaited<ReturnType<type
   outputs: project.outputs.map((o) => (o.id === id ? retimed(o, withNarration(o.scene, voice, clips)) : o)),
 })
 
-export function useGenerator({ target, voice, project, output, create, update, select, onError }: Options) {
+export function useGenerator({ target, voice, project, output, create, update, save, select, onError }: Options) {
   const [live, setLive] = useState<Scene | null>(null)
   const [status, setStatus] = useState('')
   const [warnings, setWarnings] = useState<string[]>([])
-  /** Chapter titles of the lesson being generated, and which one is being written. */
+  /** Chapter titles of the lesson being written, and which one is being written. */
   const [plan, setPlan] = useState<{ titles: string[]; index: number } | null>(null)
-  const controller = useRef<AbortController | null>(null)
+  const following = useRef<{ jobId: string; source: EventSource } | null>(null)
+  const recording = useRef<AbortController | null>(null)
+  /** Deliveries already added, so a reconnect's replay does not add them twice. */
+  const received = useRef(new Set<string>())
+  const projectId = useRef<string | null>(null)
+  projectId.current = project?.id ?? null
+  /** Set while run() starts a job, so opening its new project does not follow it a second time. */
+  const starting = useRef(false)
+
+  /** Adds delivered chapters to the open project (if they belong to it), saves, then claims them. */
+  const receive = useCallback(
+    async (forProject: string, deliveries: Delivery[]) => {
+      const fresh = deliveries.filter((d) => !received.current.has(d.id))
+      if (fresh.length === 0 || projectId.current !== forProject) return
+      for (const delivery of fresh) {
+        received.current.add(delivery.id)
+        update(applyOutput(delivery.output as Output))
+      }
+      await save()
+      await api.claimDeliveries(fresh.map((d) => d.id))
+    },
+    [update, save],
+  )
+
+  /** Follows a job until it ends; resolves with the ids of the chapters it delivered. */
+  const follow = useCallback(
+    (jobId: string, forProject: string) =>
+      new Promise<string[]>((resolve) => {
+        const delivered: string[] = []
+        setStatus('Starting…')
+        const source = api.jobEvents(jobId, (event: JobEvent) => {
+          if (event.type === 'status') setStatus(event.text)
+          else if (event.type === 'plan') setPlan({ titles: event.titles, index: event.index })
+          else if (event.type === 'live') setLive(event.scene as Scene)
+          else if (event.type === 'warning') setWarnings((current) => (current.includes(event.message) ? current : [...current, event.message]))
+          else if (event.type === 'output') {
+            delivered.push((event.delivery.output as Output).id)
+            receive(forProject, [event.delivery]).catch(onError)
+          } else {
+            source.close()
+            following.current = null
+            setLive(null)
+            setPlan(null)
+            setStatus('')
+            if (event.status === 'failed') onError(new Error(event.error ?? 'Writing the lesson failed.'))
+            resolve(delivered)
+          }
+        })
+        following.current = { jobId, source }
+      }),
+    [receive, onError],
+  )
 
   const run = useCallback(
     async (mode: Mode, prompt: string) => {
-      const abort = new AbortController()
-      controller.current = abort
       setWarnings([])
-      setStatus('Starting…')
-
-      const turn: Turn = { prompt, ...target, at: new Date().toISOString() }
-      const scene = async (label: string, messages: Parameters<typeof generateScene>[1]) => {
-        setStatus(`${label}: waiting for the model…`)
-        const result = await generateScene(target, messages, abort.signal, (partial) => {
-          setLive(partial)
-          setStatus(`${label}: ${partial.boards.length} boards, ${partial.elements.length} shapes, ${partial.beats.length} beats`)
-        })
-        setWarnings((current) => [...current, ...result.warnings])
-        return narrated(label, result.scene)
-      }
-
-      /** Records the narration; without it the browser reads the lines, so a failure is only a warning. */
-      const narrated = async (label: string, written: Scene) => {
-        const lines = unrecorded(written, voice)
-        if (lines.length === 0) return withNarration(written, voice)
-        try {
-          const clips = await record(lines, voice, abort.signal, (index) =>
-            setStatus(`${label}: recording narration ${index + 1}/${lines.length}`),
-          )
-          return withNarration(written, voice, clips)
-        } catch (error) {
-          if (abort.signal.aborted) throw error
-          setWarnings((current) => [...current, `narration not recorded (${errorMessage(error)}); the browser voice reads it instead`])
-          return written
-        }
-      }
-
+      starting.current = true
       try {
-        if (mode === 'refine') {
-          if (!output) throw new Error('Select an output to refine.')
-          update(replaceOutput(reviseOutput(output, await scene('Revising', refineMessages(output.scene, prompt)), turn)))
-        } else if (mode === 'scene') {
-          if (!project) await create(titleFrom(prompt))
-          const next = newOutput(titleFrom(prompt), await scene('Writing scene', sceneMessages(prompt)), turn)
-          update(addOutput(next))
-          select(next.id)
-        } else {
-          await create(titleFrom(prompt))
-          setStatus('Planning the lesson…')
-          const outline = await planLesson(target, prompt, abort.signal)
-          const titles = outline.map((chapter) => chapter.title)
-          let first: string | null = null
-          for (const [index, chapter] of outline.entries()) {
-            setPlan({ titles, index })
-            const label = `Chapter ${index + 1}/${outline.length} · ${chapter.title}`
-            const next = newOutput(
-              chapter.title,
-              await scene(label, chapterMessages(prompt, outline, index)),
-              { ...turn, prompt: `${prompt}: ${chapter.title}` },
-            )
-            update(addOutput(next))
-            first ??= next.id
-          }
-          if (first) select(first)
-        }
+        const forProject = mode === 'teach' || !project ? (await create(titleFrom(prompt))).id : project.id
+        const { id } = await api.startJob({ mode, prompt, projectId: forProject, ...target, voice, output: mode === 'refine' ? output : undefined })
+        const job = follow(id, forProject)
+        starting.current = false
+        const delivered = await job
+        if (mode !== 'refine' && delivered[0]) select(delivered[0])
       } catch (error) {
-        if (!abort.signal.aborted) onError(error)
-      } finally {
-        controller.current = null
-        setLive(null)
-        setPlan(null)
         setStatus('')
+        onError(error)
+      } finally {
+        starting.current = false
       }
     },
-    [target, voice, project, output, create, update, select, onError],
+    [target, voice, project, output, create, follow, select, onError],
   )
+
+  // On opening a project: collect chapters finished while away, and rejoin a job still writing it.
+  const openId = project?.id
+  useEffect(() => {
+    if (!openId) return
+    api
+      .deliveries(openId)
+      .then((deliveries) => receive(openId, deliveries))
+      .then(() => api.activeJob())
+      .then((active) => {
+        if (active?.projectId === openId && !following.current && !starting.current) return follow(active.id, openId)
+      })
+      .catch(onError)
+  }, [openId, receive, follow, onError])
+
+  useEffect(() => () => following.current?.source.close(), [])
 
   /** Records the narration of chapters in `voice` (or switches them to the browser voice). */
   const narrate = useCallback(
     async (chapters: Output[], voice: string) => {
       const abort = new AbortController()
-      controller.current = abort
+      recording.current = abort
       setWarnings([])
       try {
         for (const [index, chapter] of chapters.entries()) {
           const lines = unrecorded(chapter.scene, voice)
           const label = chapters.length > 1 ? `Recording chapter ${index + 1}/${chapters.length}` : 'Recording'
           setStatus(`${label}…`)
-          const clips = await record(lines, voice, abort.signal, (index) => setStatus(`${label}: line ${index + 1}/${lines.length}`))
+          const speak = (line: string) => api.speak(line, voice, abort.signal)
+          const clips = await record(lines, speak, abort.signal, (i) => setStatus(`${label}: line ${i + 1}/${lines.length}`))
           update(narrateOutput(chapter.id, voice, clips))
         }
       } catch (error) {
         if (!abort.signal.aborted) onError(error)
       } finally {
-        controller.current = null
+        recording.current = null
         setStatus('')
       }
     },
     [update, onError],
   )
 
-  const stop = useCallback(() => controller.current?.abort(), [])
+  const stop = useCallback(() => {
+    recording.current?.abort()
+    const job = following.current
+    if (job) api.cancelJob(job.jobId).catch(onError)
+  }, [onError])
 
   return { run, narrate, stop, live, plan, status, warnings, busy: status !== '' }
 }
-
-const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error))

@@ -1,13 +1,37 @@
-import { readLines } from '../shared/lines'
-import type { ChatRequest, ProjectSummary, ProviderInfo, SpeechClip, StreamEvent, VoiceInfo } from '../shared/protocol'
+import type { Interval } from '../shared/plans'
+import type {
+  AccountInfo,
+  BillingSummary,
+  Delivery,
+  InvitationDetails,
+  JobEvent,
+  JobRequest,
+  ProjectSummary,
+  ProviderInfo,
+  SpeechClip,
+  Team,
+  VoiceInfo,
+} from '../shared/protocol'
 import type { Project } from './project'
+
+/** An error answer from the API; `status` 401 means signed out, 402 means the plan does not allow it. */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message)
+  }
+}
+
+async function failure(response: Response): Promise<ApiError> {
+  const body = await response.json().catch(() => ({}))
+  return new ApiError(typeof body.error === 'string' ? body.error : `${response.status} ${response.statusText}`, response.status)
+}
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, init)
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}))
-    throw new Error(typeof body.error === 'string' ? body.error : `${response.status} ${response.statusText}`)
-  }
+  if (!response.ok) throw await failure(response)
   return (response.status === 204 ? undefined : await response.json()) as T
 }
 
@@ -17,7 +41,32 @@ const json = (method: string, body: unknown): RequestInit => ({
   body: JSON.stringify(body),
 })
 
+type PlanChoice = { plan: 'creator' | 'pro'; interval: Interval }
+
 export const api = {
+  me: () => call<AccountInfo>('/api/auth/me'),
+  signUp: (email: string, password: string) => call<{ email: string }>('/api/auth/signup', json('POST', { email, password })),
+  signIn: (email: string, password: string) => call<{ email: string }>('/api/auth/login', json('POST', { email, password })),
+  signOut: () => call<void>('/api/auth/logout', { method: 'POST' }),
+  verifyEmail: (token: string) => call<void>('/api/auth/verify', json('POST', { token })),
+  resendVerification: () => call<void>('/api/auth/verify/resend', { method: 'POST' }),
+  forgotPassword: (email: string) => call<void>('/api/auth/password/forgot', json('POST', { email })),
+  resetPassword: (token: string, password: string) => call<{ email: string }>('/api/auth/password/reset', json('POST', { token, password })),
+  switchWorkspace: (workspaceId: string) => call<void>('/api/auth/workspace', json('POST', { workspaceId })),
+
+  team: () => call<Team>('/api/team'),
+  renameTeam: (name: string) => call<Team>('/api/team', json('PATCH', { name })),
+  invite: (email: string) => call<Team>('/api/team/invitations', json('POST', { email })),
+  revokeInvitation: (id: string) => call<Team>(`/api/team/invitations/${id}`, { method: 'DELETE' }),
+  removeMember: (userId: string) => call<Team>(`/api/team/members/${userId}`, { method: 'DELETE' }),
+  invitation: (token: string) => call<InvitationDetails>(`/api/team/invitations/${encodeURIComponent(token)}`),
+  acceptInvitation: (token: string) => call<void>('/api/team/invitations/accept', json('POST', { token })),
+
+  checkout: (choice: PlanChoice & { discountCode?: string }) => call<{ url: string }>('/api/billing/checkout', json('POST', choice)),
+  changePlan: (choice: PlanChoice) => call<BillingSummary>('/api/billing/change', json('POST', choice)),
+  cancelPlan: () => call<BillingSummary>('/api/billing/cancel', { method: 'POST' }),
+  resumePlan: () => call<BillingSummary>('/api/billing/resume', { method: 'POST' }),
+
   providers: () => call<ProviderInfo[]>('/api/providers'),
   projects: () => call<ProjectSummary[]>('/api/projects'),
   project: (id: string) => call<Project>(`/api/projects/${id}`),
@@ -33,17 +82,15 @@ export const api = {
   speak: (text: string, voice: string, signal?: AbortSignal) =>
     call<SpeechClip>('/api/speech', { ...json('POST', { text, voice }), signal }),
 
-  /** Streams the model's text as it is generated. */
-  async *chat(request: ChatRequest, signal: AbortSignal): AsyncGenerator<string> {
-    const response = await fetch('/api/chat', { ...json('POST', request), signal })
-    if (!response.ok || !response.body) throw new Error(`Chat failed: ${response.status} ${await response.text()}`)
-
-    for await (const line of readLines(response.body)) {
-      if (!line) continue
-      const event = JSON.parse(line) as StreamEvent
-      if (event.type === 'error') throw new Error(event.message)
-      if (event.type === 'done') return
-      yield event.text
-    }
+  startJob: (request: JobRequest) => call<{ id: string }>('/api/jobs', json('POST', request)),
+  activeJob: () => call<{ id: string; projectId: string } | null>('/api/jobs/active'),
+  cancelJob: (id: string) => call<void>(`/api/jobs/${id}/cancel`, { method: 'POST' }),
+  deliveries: (projectId: string) => call<Delivery[]>(`/api/jobs/deliveries?projectId=${encodeURIComponent(projectId)}`),
+  claimDeliveries: (ids: string[]) => call<void>('/api/jobs/deliveries/claim', json('POST', { ids })),
+  /** A job's events as they happen (server-sent events); close the source when done. */
+  jobEvents: (id: string, onEvent: (event: JobEvent) => void) => {
+    const source = new EventSource(`/api/jobs/${id}/events`)
+    source.onmessage = (message) => onEvent(JSON.parse(message.data))
+    return source
   },
 }

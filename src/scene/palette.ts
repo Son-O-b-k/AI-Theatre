@@ -17,10 +17,11 @@ export const PALETTE = {
 
 export type ColorName = keyof typeof PALETTE
 
+/** The stage is a chalkboard: a warm, dark slate that the palette's colours read well on. */
 export const THEME = {
-  background: '#0b1124',
-  text: '#f1f5f9',
-  label: '#cbd5e1',
+  background: '#1d2422',
+  text: '#f3f0e8',
+  label: '#d6d2c6',
   link: PALETTE.slate,
   accent: PALETTE.blue,
 } as const

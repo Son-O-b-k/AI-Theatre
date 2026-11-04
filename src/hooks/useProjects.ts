@@ -32,9 +32,15 @@ export function useProjects(onError: (error: unknown) => void) {
     return () => clearTimeout(timer)
   }, [project, flush, onError])
 
+  // `latest` is updated here, not after the next render, so a save right after an update (flush)
+  // writes the change instead of the project as it was.
   const update = useCallback((change: (project: Project) => Project) => {
+    const current = latest.current
+    if (!current) return
+    const next = { ...change(current), updatedAt: new Date().toISOString() }
+    latest.current = next
     dirty.current = true
-    setProject((current) => current && { ...change(current), updatedAt: new Date().toISOString() })
+    setProject(next)
   }, [])
 
   const show = useCallback(
@@ -72,5 +78,5 @@ export function useProjects(onError: (error: unknown) => void) {
     [show, refresh],
   )
 
-  return { summaries, project, open, close, create, remove, update }
+  return { summaries, project, open, close, create, remove, update, flush }
 }

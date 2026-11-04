@@ -31,6 +31,9 @@ export interface Project {
 
 export const shortId = () => crypto.randomUUID().slice(0, 8)
 
+/** A chapter or lesson title from the prompt that made it. */
+export const titleFrom = (prompt: string) => (prompt.length > 48 ? `${prompt.slice(0, 45)}…` : prompt)
+
 export function newProject(name: string): Project {
   const now = new Date().toISOString()
   return { id: shortId(), name, createdAt: now, updatedAt: now, outputs: [] }

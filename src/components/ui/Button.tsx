@@ -2,10 +2,9 @@ import type { ButtonHTMLAttributes } from 'react'
 import { cx } from './cx'
 
 const VARIANTS = {
-  primary:
-    'bg-gradient-to-r from-accent to-accent-2 text-canvas font-semibold shadow-lg shadow-accent/20 hover:brightness-110',
+  primary: 'bg-ink text-canvas font-semibold hover:bg-ink/85',
   secondary: 'bg-raised text-ink border border-line hover:border-line-strong hover:bg-hover',
-  ghost: 'text-dim hover:text-ink hover:bg-white/5',
+  ghost: 'text-dim hover:text-ink hover:bg-tint',
   active: 'bg-accent/15 text-accent',
 }
 

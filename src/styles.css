@@ -1,21 +1,29 @@
 @import 'tailwindcss';
+@import '@fontsource-variable/instrument-sans';
+@import '@fontsource-variable/fraunces';
+/* The stage measures its text for Inter (src/scene/geometry.ts), so it keeps using it. */
 @import '@fontsource-variable/inter';
 
+/* Chalk & paper: a warm paper interface around a dark chalkboard stage, one vermilion accent. */
 @theme {
-  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Instrument Sans Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-serif: 'Fraunces Variable', ui-serif, Georgia, serif;
 
-  --color-canvas: #070a13;
-  --color-panel: #0b101d;
-  --color-raised: #121a2c;
-  --color-hover: #18213a;
-  --color-line: rgb(255 255 255 / 0.07);
-  --color-line-strong: rgb(255 255 255 / 0.14);
-  --color-ink: #e9edf8;
-  --color-dim: #8a93ae;
-  --color-faint: #5b6480;
-  --color-accent: #8b9cff;
-  --color-accent-2: #b89dff;
-  --color-danger: #ff7a85;
+  --color-canvas: #f4f0e6;
+  --color-panel: #faf7f0;
+  --color-raised: #fffdf8;
+  --color-hover: #ece6d8;
+  --color-tint: rgb(40 32 20 / 0.05);
+  --color-line: rgb(40 32 20 / 0.1);
+  --color-line-strong: rgb(40 32 20 / 0.2);
+  --color-ink: #1d1b17;
+  --color-dim: #5c564c;
+  --color-faint: #8a8376;
+  --color-accent: #c8402a;
+  --color-danger: #b42318;
+  /* The stage and what sits on it. */
+  --color-board: #1d2422;
+  --color-chalk: #f3f0e8;
 
   --animate-pulse-dot: pulse-dot 1.4s ease-in-out infinite;
   @keyframes pulse-dot {
@@ -41,11 +49,15 @@ body {
   color: var(--color-ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 /* Thin, quiet scrollbars for the side panels. */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgb(255 255 255 / 0.12) transparent;
+  scrollbar-color: rgb(40 32 20 / 0.18) transparent;
+}
+
+::selection {
+  background: rgb(200 64 42 / 0.18);
 }

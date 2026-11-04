@@ -58,6 +58,8 @@ interface Props {
   editing: boolean
   onEditKeyframes(): void
   voices: VoiceInfo[]
+  /** Recorded voices need a paid plan; choosing one then opens the plans instead. */
+  voicesLocked: boolean
   /** Records the lesson's narration in another voice; unavailable while `recording`. */
   onVoiceChange(voice: string): void
   recording: boolean
@@ -251,9 +253,9 @@ export function LessonPlayer(props: Props) {
       <div className="flex flex-col gap-3" style={{ width: `min(100cqw, (100cqh - ${CONTROLS_HEIGHT}px) * 16 / 9)` }}>
         <div
           ref={frameRef}
-          className="grid place-items-center bg-canvas [&:fullscreen]:h-full [&:fullscreen]:[container-type:size]"
+          className="grid place-items-center bg-board [&:fullscreen]:h-full [&:fullscreen]:[container-type:size]"
         >
-          <div className="relative aspect-video w-full overflow-hidden rounded-2xl shadow-2xl ring-1 shadow-black/50 ring-line [:fullscreen_&]:w-[min(100cqw,100cqh*16/9)] [:fullscreen_&]:rounded-none">
+          <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-board shadow-xl ring-1 shadow-ink/15 ring-ink/10 [:fullscreen_&]:w-[min(100cqw,100cqh*16/9)] [:fullscreen_&]:rounded-none">
             <div
               ref={hostRef}
               className="absolute inset-0 [&_svg]:size-full"
@@ -261,7 +263,7 @@ export function LessonPlayer(props: Props) {
             />
 
             {live && (
-              <div className="absolute top-4 left-4 flex max-w-[80%] items-center gap-2 rounded-full border border-line-strong bg-black/50 px-3 py-1.5 text-xs font-medium backdrop-blur">
+              <div className="absolute top-4 left-4 flex max-w-[80%] items-center gap-2 rounded-full border border-white/15 bg-black/50 px-3 py-1.5 text-xs font-medium text-chalk">
                 <span className="size-2 shrink-0 animate-pulse-dot rounded-full bg-accent" />
                 <span className="truncate">{liveStatus || 'Generating…'}</span>
               </div>
@@ -271,7 +273,7 @@ export function LessonPlayer(props: Props) {
               <button
                 onClick={() => playerRef.current?.play()}
                 aria-label="Play"
-                className="absolute top-1/2 left-1/2 grid size-16 -translate-x-1/2 -translate-y-1/2 cursor-pointer place-items-center rounded-full bg-white/10 ring-1 ring-white/20 backdrop-blur transition hover:scale-105 hover:bg-white/15"
+                className="absolute top-1/2 left-1/2 grid size-16 -translate-x-1/2 -translate-y-1/2 cursor-pointer place-items-center rounded-full bg-white/10 text-chalk ring-1 ring-white/25 transition hover:scale-105 hover:bg-white/15"
               >
                 <Play className="ml-1 size-7 fill-current" />
               </button>
@@ -279,7 +281,7 @@ export function LessonPlayer(props: Props) {
 
             {outdated && (
               <div className="absolute inset-0 grid place-items-center p-8 text-center">
-                <div className="max-w-sm rounded-xl border border-line bg-panel/90 p-5 backdrop-blur">
+                <div className="max-w-sm rounded-xl border border-line bg-panel p-5">
                   <p className="font-medium">Made with an older scene format</p>
                   <p className="mt-1.5 text-sm text-dim">
                     Ask for a change below (Refine) and the AI will rewrite it in the new format.
@@ -289,13 +291,13 @@ export function LessonPlayer(props: Props) {
             )}
 
             {!output && !live && (
-              <div className="absolute inset-0 grid place-items-center p-8 text-center text-dim">
+              <div className="absolute inset-0 grid place-items-center p-8 text-center text-chalk/70">
                 <p>No chapters yet. Describe one below.</p>
               </div>
             )}
 
             {captions && caption && ready && !editing && (
-              <p className="absolute bottom-[5%] left-1/2 w-max max-w-[82%] -translate-x-1/2 rounded-lg bg-black/65 px-4 py-2 text-center text-[clamp(13px,1.6cqw,20px)] leading-snug font-medium text-balance backdrop-blur">
+              <p className="absolute bottom-[5%] left-1/2 w-max max-w-[82%] -translate-x-1/2 rounded-lg bg-black/65 px-4 py-2 text-center text-chalk text-[clamp(13px,1.6cqw,20px)] leading-snug font-medium text-balance">
                 {caption}
               </p>
             )}
@@ -304,7 +306,7 @@ export function LessonPlayer(props: Props) {
               <Button
                 variant="ghost"
                 size="icon"
-                className="absolute top-3 right-3"
+                className="absolute top-3 right-3 text-chalk/80 hover:bg-white/10 hover:text-chalk"
                 onClick={() => document.exitFullscreen()}
               >
                 <X className="size-5" />
@@ -357,14 +359,14 @@ export function LessonPlayer(props: Props) {
             aria-valuemin={0}
             aria-valuemax={duration}
           >
-            <div className="absolute top-1/2 h-1.5 w-full -translate-y-1/2 overflow-hidden rounded-full bg-white/10 transition-[height] group-hover:h-2">
-              <div ref={fillRef} className="h-full w-0 rounded-full bg-gradient-to-r from-accent to-accent-2" />
+            <div className="absolute top-1/2 h-1.5 w-full -translate-y-1/2 overflow-hidden rounded-full bg-ink/10 transition-[height] group-hover:h-2">
+              <div ref={fillRef} className="h-full w-0 rounded-full bg-accent" />
             </div>
             {ready &&
               cues?.map((cue: Cue, i) => (
                 <span
                   key={i}
-                  className="pointer-events-none absolute top-1/2 h-2.5 w-0.5 -translate-y-1/2 rounded-full bg-white/35"
+                  className="pointer-events-none absolute top-1/2 h-2.5 w-0.5 -translate-y-1/2 rounded-full bg-ink/25"
                   style={{ left: `${(cue.t / (duration || 1)) * 100}%` }}
                 />
               ))}
@@ -397,6 +399,7 @@ export function LessonPlayer(props: Props) {
                 icon={AudioLines}
                 checked={narrate && voice === v.id}
                 disabled={!ready || props.recording}
+                hint={props.voicesLocked ? 'Creator' : undefined}
                 onSelect={() => chooseVoice(v.id)}
               >
                 {v.label}

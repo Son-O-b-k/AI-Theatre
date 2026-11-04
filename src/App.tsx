@@ -9,8 +9,11 @@ import {
   Smartphone,
   X,
 } from 'lucide-react'
-import { useCallback, useRef, useState } from 'react'
-import { api } from './api'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { AccountInfo } from '../shared/protocol'
+import { api, ApiError } from './api'
+import { BillingDialog } from './components/BillingDialog'
+import { TeamDialog } from './components/TeamDialog'
 import { Home } from './components/Home'
 import { chapterTitle, LessonPanel, LIVE } from './components/LessonPanel'
 import { LessonPlayer, type PlayerHandle } from './components/LessonPlayer'
@@ -45,14 +48,33 @@ const LESSON_MODES: ModeOption[] = [
   { mode: 'teach', label: 'New lesson', placeholder: 'Start a new lesson on another topic' },
 ]
 
-export function App() {
+interface Props {
+  account: AccountInfo
+  onAccountChange(): void
+  onSignOut(): void
+  /** A message to show on arrival, e.g. after confirming an email. */
+  initialNotice: string | null
+}
+
+export function App({ account, onAccountChange, onSignOut, initialNotice }: Props) {
   const [error, setError] = useState<string | null>(null)
-  const onError = useCallback((e: unknown) => setError(e instanceof Error ? e.message : String(e)), [])
+  /** The last error was the plan's limit: offer the plans next to it. */
+  const [limitReached, setLimitReached] = useState(false)
+  const [notice, setNotice] = useState<string | null>(initialNotice)
+  const [billingOpen, setBillingOpen] = useState(false)
+  const [teamOpen, setTeamOpen] = useState(false)
+  const onError = useCallback((e: unknown) => {
+    setError(e instanceof Error ? e.message : String(e))
+    setLimitReached(e instanceof ApiError && e.status === 402)
+  }, [])
 
   const projects = useProjects(onError)
   const layout = useLayout()
   const { providers, target, setTarget } = useProviders(onError)
   const { voices, voice, setVoice } = useVoice()
+  const { billing } = account
+  // Free plans narrate with the browser's voice; recorded voices come with a paid plan.
+  const narrationVoice = billing.recordedVoices ? voice : BROWSER_VOICE
   const { project } = projects
   const outputs = project?.outputs ?? []
 
@@ -75,11 +97,12 @@ export function App() {
 
   const generator = useGenerator({
     target,
-    voice,
+    voice: narrationVoice,
     project,
     output,
     create: projects.create,
     update: projects.update,
+    save: projects.flush,
     select: selectIfWatchingLive,
     onError,
   })
@@ -90,6 +113,19 @@ export function App() {
     setSelected(id)
     setAutoPlayId(null)
   }
+
+  // Usage changes with every generation; refresh the meter when one ends.
+  useEffect(() => {
+    if (!generator.busy) onAccountChange()
+  }, [generator.busy, onAccountChange])
+
+  // Back from the payment page.
+  useEffect(() => {
+    if (new URLSearchParams(location.search).get('billing') !== 'success') return
+    history.replaceState(null, '', '/app')
+    onAccountChange()
+    setNotice('Thank you! Your plan is active.')
+  }, [onAccountChange])
 
   const run = async (runMode: Mode, text: string) => {
     setError(null)
@@ -109,6 +145,10 @@ export function App() {
 
   /** A lesson has one voice: choosing one records every chapter that is not narrated with it yet. */
   const changeVoice = (next: string) => {
+    if (next !== BROWSER_VOICE && !billing.recordedVoices) {
+      setBillingOpen(true)
+      return
+    }
     setVoice(next)
     const changed = outputs.filter(
       (o) => o.scene.version === SCENE_VERSION && (next === BROWSER_VOICE ? o.scene.voice : unrecorded(o.scene, next).length > 0),
@@ -174,6 +214,18 @@ export function App() {
   ]
   const sidebar = (
     <Sidebar
+      account={account}
+      onOpenBilling={() => {
+        layout.closeDrawer()
+        setBillingOpen(true)
+      }}
+      onSignOut={onSignOut}
+      onOpenTeam={() => {
+        layout.closeDrawer()
+        setTeamOpen(true)
+      }}
+      onSwitchWorkspace={(id) => api.switchWorkspace(id).then(() => location.assign('/app'), onError)}
+      onResendVerification={() => api.resendVerification().then(() => setNotice(`We sent a new link to ${account.email}.`), onError)}
       summaries={projects.summaries}
       activeId={project?.id ?? null}
       providers={providers}
@@ -216,8 +268,8 @@ export function App() {
       {layout.sidebar === 'inline' && sidebar}
       {layout.sidebar === 'drawer' && (
         <div className="fixed inset-0 z-40 flex">
-          <div className="w-[280px] shadow-2xl shadow-black/60">{sidebar}</div>
-          <div className="flex-1 bg-black/50 backdrop-blur-[2px]" onClick={layout.closeDrawer} />
+          <div className="w-[280px] shadow-2xl shadow-ink/20">{sidebar}</div>
+          <div className="flex-1 bg-ink/30" onClick={layout.closeDrawer} />
         </div>
       )}
 
@@ -253,7 +305,7 @@ export function App() {
                     value={project.name}
                     onChange={(e) => projects.update((p) => ({ ...p, name: e.target.value }))}
                     aria-label="Lesson name"
-                    className="w-full truncate rounded-md bg-transparent text-lg font-semibold tracking-tight outline-none hover:bg-white/3 focus:bg-white/4"
+                    className="w-full truncate rounded-md bg-transparent font-serif text-xl font-medium tracking-tight outline-none hover:bg-tint focus:bg-tint"
                   />
                   <p className="truncate text-[13px] text-dim">{subtitle}</p>
                 </div>
@@ -299,6 +351,7 @@ export function App() {
               editing={layout.editing}
               onEditKeyframes={() => layout.setEditing(true)}
               voices={voices}
+              voicesLocked={!billing.recordedVoices}
               onVoiceChange={changeVoice}
               recording={generator.busy}
               // Stacked layout scrolls, so the player needs an explicit height: a full-width 16:9 stage plus controls.
@@ -358,15 +411,44 @@ export function App() {
       {error && (
         <div
           role="alert"
-          className="fixed right-5 bottom-5 z-40 flex max-w-md items-start gap-3 rounded-xl border border-danger/30 bg-raised p-3.5 shadow-2xl shadow-black/50"
+          className="fixed right-5 bottom-5 z-40 flex max-w-md items-start gap-3 rounded-xl border border-danger/30 bg-raised p-3.5 shadow-xl shadow-ink/15"
         >
           <CircleAlert className="mt-0.5 size-4 shrink-0 text-danger" />
           <p className="flex-1 text-[13px] leading-relaxed">{error}</p>
+          {limitReached && (
+            <Button variant="primary" size="sm" onClick={() => setBillingOpen(true)}>
+              See plans
+            </Button>
+          )}
           <Button variant="ghost" size="icon-sm" onClick={() => setError(null)} aria-label="Dismiss">
             <X className="size-3.5" />
           </Button>
         </div>
       )}
+
+      {notice && !error && (
+        <div
+          role="status"
+          className="fixed right-5 bottom-5 z-40 flex max-w-md items-start gap-3 rounded-xl border border-line bg-raised p-3.5 shadow-xl shadow-ink/15"
+        >
+          <Check className="mt-0.5 size-4 shrink-0 text-accent" />
+          <p className="flex-1 text-[13px] leading-relaxed">{notice}</p>
+          <Button variant="ghost" size="icon-sm" onClick={() => setNotice(null)} aria-label="Dismiss">
+            <X className="size-3.5" />
+          </Button>
+        </div>
+      )}
+
+      {billingOpen && (
+        <BillingDialog
+          billing={billing}
+          canManage={account.workspace.role === 'owner'}
+          emailVerified={account.emailVerified}
+          onChanged={onAccountChange}
+          onClose={() => setBillingOpen(false)}
+        />
+      )}
+      {teamOpen && <TeamDialog isOwner={account.workspace.role === 'owner'} onClose={() => setTeamOpen(false)} />}
     </div>
   )
 }

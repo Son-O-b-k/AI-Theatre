@@ -77,13 +77,13 @@ function Chapters({ outputs, selected, generating, writing, onSelect, onDelete }
               onClick={() => onSelect(output.id)}
               className={cx(
                 'flex w-full cursor-pointer items-start gap-3 rounded-xl p-2.5 pr-10 text-left transition',
-                active ? 'bg-accent/10 ring-1 ring-accent/30' : 'hover:bg-white/4',
+                active ? 'bg-accent/8 ring-1 ring-accent/30' : 'hover:bg-tint',
               )}
             >
               <span
                 className={cx(
                   'grid size-7 shrink-0 place-items-center rounded-lg text-xs font-semibold tabular-nums',
-                  active ? 'bg-gradient-to-br from-accent to-accent-2 text-canvas' : 'bg-raised text-dim',
+                  active ? 'bg-ink text-canvas' : 'bg-tint text-dim',
                 )}
               >
                 {index + 1}
@@ -119,11 +119,11 @@ function Chapters({ outputs, selected, generating, writing, onSelect, onDelete }
               onClick={() => onSelect(LIVE)}
               className={cx(
                 'flex w-full items-start gap-3 rounded-xl p-2.5 text-left transition',
-                current ? 'cursor-pointer hover:bg-white/4' : 'opacity-50',
-                current && selected === LIVE && 'bg-accent/10 ring-1 ring-accent/30',
+                current ? 'cursor-pointer hover:bg-tint' : 'opacity-50',
+                current && selected === LIVE && 'bg-accent/8 ring-1 ring-accent/30',
               )}
             >
-              <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-raised text-xs font-semibold text-dim tabular-nums">
+              <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-tint text-xs font-semibold text-dim tabular-nums">
                 {current ? <Loader2 className="size-3.5 animate-spin text-accent" /> : outputs.length + i + 1}
               </span>
               <span className="min-w-0 flex-1">
@@ -165,7 +165,7 @@ function Transcript({ cues, cueIndex, editable, onSeek, onNarrationChange }: Pro
       {editing ? (
         <ol className="space-y-2">
           {cues.map((cue, index) => (
-            <li key={`${index}:${cue.text}`} className="rounded-xl border border-line bg-raised/50 p-2">
+            <li key={`${index}:${cue.text}`} className="rounded-xl border border-line bg-raised p-2">
               <div className="mb-1.5 flex items-center gap-2">
                 <span className="text-xs text-faint tabular-nums">{formatTime(cue.t)}</span>
                 <Button
@@ -201,8 +201,8 @@ function Transcript({ cues, cueIndex, editable, onSeek, onNarrationChange }: Pro
                 <button
                   onClick={() => onSeek(cue.t)}
                   className={cx(
-                    'flex w-full cursor-pointer gap-3 rounded-lg px-2 py-2 text-left transition hover:bg-white/4',
-                    current && 'bg-white/5',
+                    'flex w-full cursor-pointer gap-3 rounded-lg px-2 py-2 text-left transition hover:bg-tint',
+                    current && 'bg-tint',
                   )}
                 >
                   <span className={cx('w-9 shrink-0 pt-px text-xs tabular-nums', current ? 'text-accent' : 'text-faint')}>

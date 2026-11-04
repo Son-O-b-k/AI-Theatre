@@ -1,12 +1,20 @@
-import { BookOpen, Clapperboard, Download, MoreHorizontal, PanelLeftClose, Plus, Trash2, Upload } from 'lucide-react'
+import { BookOpen, Download, LogOut, MoreHorizontal, PanelLeftClose, Plus, Trash2, Upload, Users } from 'lucide-react'
 import { useRef } from 'react'
-import type { ProjectSummary, ProviderInfo } from '../../shared/protocol'
-import type { ModelTarget } from '../ai/generate'
+import { LESSON_TOKENS, PLANS } from '../../shared/plans'
+import type { AccountInfo, ModelTarget, ProjectSummary, ProviderInfo } from '../../shared/protocol'
+import { UsageBar } from './BillingDialog'
+import { Logo } from './Logo'
 import { Button } from './ui/Button'
 import { cx } from './ui/cx'
 import { Menu, MenuItem } from './ui/Menu'
 
 interface Props {
+  account: AccountInfo
+  onOpenBilling(): void
+  onOpenTeam(): void
+  onSwitchWorkspace(id: string): void
+  onResendVerification(): void
+  onSignOut(): void
   summaries: ProjectSummary[]
   activeId: string | null
   providers: ProviderInfo[]
@@ -31,17 +39,14 @@ export function timeAgo(iso: string): string {
   return relative.format(Math.round(hours / 24), 'day')
 }
 
-export function Sidebar({ summaries, activeId, providers, target, onTarget, onHome, onOpen, onExport, onDelete, onImport, onCollapse }: Props) {
+export function Sidebar({ account, onOpenBilling, onOpenTeam, onSwitchWorkspace, onResendVerification, onSignOut, summaries, activeId, providers, target, onTarget, onHome, onOpen, onExport, onDelete, onImport, onCollapse }: Props) {
   const importInput = useRef<HTMLInputElement>(null)
 
   return (
     <aside className="flex h-full min-h-0 flex-col border-r border-line bg-panel">
       <div className="flex h-14 shrink-0 items-center pr-2">
         <button onClick={onHome} className="flex h-full flex-1 cursor-pointer items-center gap-2.5 px-4 text-left">
-          <span className="grid size-8 place-items-center rounded-lg bg-gradient-to-br from-accent to-accent-2 shadow-lg shadow-accent/20">
-            <Clapperboard className="size-4 text-canvas" strokeWidth={2.25} />
-          </span>
-          <span className="font-semibold tracking-tight">AI Theatre</span>
+          <Logo />
         </button>
         <Button variant="ghost" size="icon-sm" onClick={onCollapse} aria-label="Hide library">
           <PanelLeftClose className="size-4" />
@@ -79,7 +84,7 @@ export function Sidebar({ summaries, activeId, providers, target, onTarget, onHo
               onClick={() => onOpen(project.id)}
               className={cx(
                 'flex w-full cursor-pointer items-center gap-3 rounded-lg py-2 pr-9 pl-2.5 text-left transition',
-                project.id === activeId ? 'bg-white/7' : 'hover:bg-white/4',
+                project.id === activeId ? 'bg-hover' : 'hover:bg-tint',
               )}
             >
               <BookOpen className={cx('size-4 shrink-0', project.id === activeId ? 'text-accent' : 'text-faint')} />
@@ -111,6 +116,14 @@ export function Sidebar({ summaries, activeId, providers, target, onTarget, onHo
         {summaries.length === 0 && <p className="px-3 py-2 text-[13px] text-faint">Your lessons will appear here.</p>}
       </nav>
 
+      <AccountCard
+        account={account}
+        onOpenBilling={onOpenBilling}
+        onOpenTeam={onOpenTeam}
+        onSwitchWorkspace={onSwitchWorkspace}
+        onResendVerification={onResendVerification}
+        onSignOut={onSignOut}
+      />
       <ModelPicker providers={providers} target={target} onTarget={onTarget} />
     </aside>
   )
@@ -120,10 +133,10 @@ function ModelPicker({ providers, target, onTarget }: Pick<Props, 'providers' | 
   const provider = providers.find((p) => p.id === target.provider)
 
   return (
-    <div className="m-3 rounded-xl border border-line bg-raised/50 p-3">
+    <div className="m-3 rounded-xl border border-line bg-raised p-3">
       <div className="mb-2 flex items-center gap-2 text-[11px] font-medium tracking-wide text-faint uppercase">
         <span
-          className={cx('size-1.5 rounded-full', provider?.error ? 'bg-danger' : 'bg-emerald-400')}
+          className={cx('size-1.5 rounded-full', provider?.error ? 'bg-danger' : 'bg-emerald-600')}
           title={provider?.error ?? 'Connected'}
         />
         AI model
@@ -153,6 +166,57 @@ function ModelPicker({ providers, target, onTarget }: Pick<Props, 'providers' | 
         {provider?.models.map((model) => <option key={model} value={model} />)}
       </datalist>
       {provider?.error && <p className="mt-2 line-clamp-2 text-xs text-danger" title={provider.error}>{provider.error}</p>}
+    </div>
+  )
+}
+
+type CardProps = Pick<Props, 'account' | 'onOpenBilling' | 'onOpenTeam' | 'onSwitchWorkspace' | 'onResendVerification' | 'onSignOut'>
+
+function AccountCard({ account, onOpenBilling, onOpenTeam, onSwitchWorkspace, onResendVerification, onSignOut }: CardProps) {
+  const { billing, workspaces, workspace } = account
+  const plan = PLANS[billing.plan]
+  return (
+    <div className="mx-3 mt-3 rounded-xl border border-line bg-raised p-3">
+      <div className="flex items-center gap-2">
+        <span className="min-w-0 flex-1 truncate text-[13px] font-medium" title={account.email}>
+          {account.email}
+        </span>
+        <Button variant="ghost" size="icon-sm" onClick={onSignOut} title="Sign out">
+          <LogOut className="size-3.5" />
+        </Button>
+      </div>
+      {!account.emailVerified && (
+        <p className="mt-1 text-xs text-dim">
+          Email not confirmed.{' '}
+          <button onClick={onResendVerification} className="cursor-pointer font-medium text-accent hover:underline">
+            Send the link again
+          </button>
+        </p>
+      )}
+      {workspaces.length > 1 && (
+        <select
+          value={workspace.id}
+          onChange={(e) => onSwitchWorkspace(e.target.value)}
+          aria-label="Workspace"
+          className="mt-2 h-8 w-full cursor-pointer rounded-lg border border-line bg-panel px-2 text-[13px] outline-none focus:border-ink/40"
+        >
+          {workspaces.map((w) => (
+            <option key={w.id} value={w.id}>
+              {w.name}
+              {w.role === 'owner' ? '' : ' (team)'}
+            </option>
+          ))}
+        </select>
+      )}
+      <UsageBar used={billing.tokensUsed / LESSON_TOKENS} allowance={plan.lessons} className="mt-2" />
+      <div className="mt-3 flex gap-2">
+        <Button variant={billing.plan === 'free' ? 'primary' : 'secondary'} size="sm" className="flex-1 justify-center" onClick={onOpenBilling}>
+          {billing.plan === 'free' ? 'Upgrade' : `${plan.name} plan`}
+        </Button>
+        <Button variant="secondary" size="sm" onClick={onOpenTeam} title="People in this workspace">
+          <Users className="size-3.5" /> Team
+        </Button>
+      </div>
     </div>
   )
 }

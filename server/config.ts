@@ -19,7 +19,6 @@ const ConfigSchema = z.object({ providers: z.array(ProviderConfigSchema).min(1) 
 export type ProviderConfig = z.infer<typeof ProviderConfigSchema>
 
 export async function loadProviderConfigs(): Promise<ProviderConfig[]> {
-  if (existsSync('.env')) process.loadEnvFile('.env')
 
   const file =
     process.env.PROVIDERS_FILE ?? (existsSync('providers.json') ? 'providers.json' : 'providers.example.json')
@@ -29,6 +28,7 @@ export async function loadProviderConfigs(): Promise<ProviderConfig[]> {
   return config.providers.map((provider) => ({ ...provider, apiKey: resolveSecret(provider.apiKey) }))
 }
 
-function resolveSecret(value: string | undefined): string | undefined {
+/** A literal value, or `env:NAME` to read it from the environment. */
+export function resolveSecret(value: string | undefined): string | undefined {
   return value?.startsWith('env:') ? process.env[value.slice(4)] : value
 }

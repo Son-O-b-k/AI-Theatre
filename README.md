@@ -13,9 +13,13 @@ Scenes stream in as they are written: elements appear on the stage while the mod
 ```sh
 npm install
 cp providers.example.json providers.json   # optional, edit to taste
-echo 'ANTHROPIC_API_KEY=sk-...' > .env      # keys referenced as "env:NAME"
+cp .env.example .env                         # optional: database, payment and AI keys
 npm run dev                                  # http://localhost:5173
 ```
+
+The app asks you to create an account. The **first** account created takes over any lessons made before accounts existed (`data/projects/`).
+
+The landing page is at `/` (`src/landing/`) and the app at `/app`. The landing page's example lesson is `src/landing/example.json`, with its narration in `public/example/`.
 
 `npm run build && npm start` serves the built app and API together on port 8787.
 
@@ -44,7 +48,8 @@ Each entry accepts `id`, `kind`, and optionally `label`, `baseUrl`, `apiKey` (a 
 ## How it works
 
 ```
-prompt ─▶ server/ (provider adapters) ─▶ NDJSON text stream
+prompt ─▶ server/lessons/jobs.ts  a job on the server, metered, streamed to the app as events
+        ─▶ server/providers/     the model's answer, as a text stream
         ─▶ src/ai/generate.ts    parses JSON Lines as they arrive, then checks the result
         ─▶ src/scene/scene.ts    validated Scene: elements, layout, actions, narration
         ─▶ src/scene/compile.ts  actions → keyframes
@@ -69,9 +74,70 @@ prompt ─▶ server/ (provider adapters) ─▶ NDJSON text stream
 
 Chapters made with an earlier format show a notice; **Change chapter** rewrites them in the current one.
 
+## Accounts, plans and billing
+
+Lessons, subscriptions and usage belong to a **workspace**; each account has its own, so people only see their own lessons. Sign-in is by email and password (scrypt hashes, httpOnly session cookies).
+
+- **Email confirmation**: sign-up sends a link (`/app/verify`). Buying a plan needs a confirmed address, because receipts and payment problems go there.
+- **Password reset**: "Forgot your password?" emails a link (`/app/reset`) that works once, for an hour, and signs out every other session. The answer never reveals whether an address has an account.
+- **Teams**: a workspace has seats (from its plan, or the number in a Teams contract). The owner invites people by email (`/app/invite`); an invitation only works for the address it was sent to, holds a seat while pending, and lasts 7 days. Members share the library and the monthly lessons; only the owner manages people and the plan. Someone in several workspaces switches between them in the sidebar.
+- **Invoiced plans**: Teams is sold by quote, so it is switched on from the command line, not through checkout:
+
+  ```sh
+  npm run admin -- set-plan owner@school.org teams --seats 10 --months 12 --name "Lagos Science School"
+  npm run admin -- end-plan owner@school.org
+  ```
+
+### Email
+
+All emails are in `server/email/templates/`: `layout.ts` is the shared frame (tables and inline styles, so it renders in every mail client), `index.ts` holds each email's words. `server/email/index.ts` sends them through SMTP when `SMTP_HOST` is set in `.env`, and otherwise writes them to `data/outbox/` and prints their links in the server log, so everything works before an email service is chosen.
+
+**Plans** are defined once in `shared/plans.ts`: prices, monthly lesson allowance and features. The landing page, the app and the server all read that file. Usage is metered in AI tokens (the real cost) and shown as lessons: a typical five-chapter lesson is about 20,000 tokens, so changing or adding a chapter costs a fraction of one. The server checks the plan where money is spent: a lesson job only starts if the allowance covers it (a whole lesson for a new lesson, a quarter for a chapter or a change), a lesson stops between chapters once the allowance runs out, and `/api/speech` (recorded voices) needs a paid plan.
+
+### Lesson jobs
+
+Lessons are written on the server (`server/lessons/jobs.ts`), not in the browser: the app starts a job and follows its progress as server-sent events, including the live preview of the board being drawn. A job keeps going if the tab is closed. Every model call is metered as it happens. One job runs at a time per workspace.
+
+The app stays the only writer of its projects, so the two never overwrite each other: each finished chapter is stored as a *delivery*, the app adds it to the project, saves, and then claims it. Deliveries that were not claimed (tab closed, connection lost) are collected the next time the project is opened, and a job still running is rejoined. The scene engine (`src/scene/`, `src/ai/`, `src/narration.ts`, `src/project.ts`) is plain TypeScript shared by the browser and the server.
+
+**Billing** (`server/billing/`) is split so the payment service can be swapped:
+
+| File | Job |
+| --- | --- |
+| `types.ts` | The `BillingProvider` interface: checkout, change plan, cancel, resume, parse webhook. |
+| `providers/lemonsqueezy.ts` | Lemon Squeezy (merchant of record: cards, tax, invoices, discount codes, customer portal). |
+| `providers/dev.ts` | A stand-in for development and tests: checkout completes instantly, no money moves. |
+| `service.ts` | The rules, independent of the provider: proration, downgrades, grace periods, idempotent webhooks. |
+| `entitlements.ts` | Pure functions: which plan applies now and what it allows. |
+| `repo.ts` | The only billing code that knows SQL. |
+
+The rules:
+
+- **Upgrades** apply at once and charge the prorated difference now.
+- **Downgrades** switch the price with no charge or credit; the customer keeps the higher plan until the paid period ends.
+- **Cancelling** keeps access until the period ends; **resuming** undoes it.
+- **Failed payments** keep access while the provider retries (`past_due`); access ends when the subscription expires.
+- **Discount codes** are entered at checkout, applied by the provider and recorded with the subscription. **Yearly** plans cost 10 months.
+- **Webhooks** are verified by signature and applied once, in a transaction: one that fails half-way is not marked handled, so the provider's retry gets another chance.
+
+Without `billing.json` the dev provider is used, so the whole flow works locally. For real payments, copy `billing.example.json` to `billing.json`, fill in the Lemon Squeezy store and variant ids, put the keys in `.env`, and point the store's webhook at `https://<your site>/api/billing/webhook`. Another service (Paddle, Paystack, Stripe…) is one new file in `providers/` implementing `BillingProvider`, plus a case in `providers/index.ts`.
+
+## Database
+
+Accounts, billing and usage are in a SQL database, chosen by `DATABASE_URL`:
+
+- **Unset**: SQLite in `data/app.db`, using Node's built-in driver. Nothing to install.
+- **`postgres://...`**: Postgres, through `pg`.
+
+Both sit behind the small async interface in `server/db/index.ts`, and the schema is created and upgraded on start from `server/db/migrations.ts` (append-only; versions are recorded in `schema_migrations`). The server tests run against either: `TEST_DATABASE_URL=postgres://... npx tsx --test --test-concurrency=1 server/**/*.test.ts`.
+
+## Security notes
+
+`npm audit` reports the image library `sharp`, which the voice model's toolkit (`@huggingface/transformers`) installs for image handling. No fixed version exists yet. AI Theatre never passes images to it, so the affected code is not reached; update `kokoro-js` when a fixed release appears.
+
 ## Storage and export
 
-Projects are JSON files in `data/projects/`, and uploaded sounds are in `data/assets/<project>/`. Recorded narration is in `data/speech/` (about 2.5 MB per minute), shared by all projects, and the voice model is in `data/models/`. Lessons point at their recordings there, so keep it with `data/projects/`.
+Lessons are JSON files in `data/workspaces/<workspace>/projects/`, and uploaded sounds are in `data/workspaces/<workspace>/assets/<project>/`. Recorded narration is in `data/speech/` (about 2.5 MB per minute), shared by all projects, and the voice model is in `data/models/`. Lessons point at their recordings there, so keep it with `data/projects/`.
 
 - **Export** (sidebar): the whole project as JSON, which **Import** loads back.
 - **Export animation**: the Theatre.js state, which loads directly with `getProject(id, { state })`.

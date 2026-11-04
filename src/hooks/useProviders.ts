@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { ProviderInfo } from '../../shared/protocol'
-import type { ModelTarget } from '../ai/generate'
+import type { ModelTarget, ProviderInfo } from '../../shared/protocol'
 import { api } from '../api'
 
 const STORAGE_KEY = 'ai-theatre:model'

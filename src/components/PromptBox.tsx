@@ -1,4 +1,4 @@
-import { ArrowUp, Film, GraduationCap, Loader2, Square, Wand2, type LucideIcon } from 'lucide-react'
+import { ArrowUp, Film, GraduationCap, Loader2, PenLine, Square, type LucideIcon } from 'lucide-react'
 import { useLayoutEffect, useRef } from 'react'
 import type { Mode } from '../hooks/useGenerator'
 import { Button } from './ui/Button'
@@ -10,7 +10,7 @@ export interface ModeOption {
   placeholder: string
 }
 
-const ICONS: Record<Mode, LucideIcon> = { teach: GraduationCap, scene: Film, refine: Wand2 }
+const ICONS: Record<Mode, LucideIcon> = { teach: GraduationCap, scene: Film, refine: PenLine }
 
 interface Props {
   value: string
@@ -63,8 +63,8 @@ export function PromptBox({
     <div>
       <div
         className={cx(
-          'rounded-2xl border border-line-strong bg-raised/80 shadow-xl shadow-black/30 transition focus-within:border-accent/50',
-          size === 'hero' && 'shadow-2xl shadow-accent/5',
+          'rounded-2xl border border-line-strong bg-raised shadow-sm shadow-ink/5 transition focus-within:border-ink/40',
+          size === 'hero' && 'shadow-lg',
         )}
       >
         <textarea

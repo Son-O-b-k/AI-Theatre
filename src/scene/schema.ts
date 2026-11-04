@@ -22,8 +22,8 @@ const id = z.string().regex(/^[A-Za-z][\w-]{0,47}$/, 'ids start with a letter an
 /** Unknown icon names are dropped rather than failing the whole element. */
 const icon = z
   .string()
+  .transform((name) => (name in ICONS ? name : undefined))
   .optional()
-  .transform((name) => (name && name in ICONS ? name : undefined))
 
 const common = {
   id,
@@ -93,18 +93,18 @@ const ACTIONS = {
   hide: z.object({ hide: ids }).transform((a) => ({ type: 'hide' as const, ids: a.hide })),
   focus: z.object({ focus: ids }).transform((a) => ({ type: 'focus' as const, ids: a.focus })),
   highlight: z
-    .object({ highlight: ids, color })
+    .object({ highlight: ids, color: color.optional() })
     .transform((a) => ({ type: 'highlight' as const, ids: a.highlight, color: a.color ?? 'amber' })),
   pulse: z.object({ pulse: ids }).transform((a) => ({ type: 'pulse' as const, ids: a.pulse })),
   travel: z
-    .object({ travel: id, along: z.string(), color, reverse: z.boolean().default(false) })
+    .object({ travel: id, along: z.string(), color: color.optional(), reverse: z.boolean().default(false) })
     .transform((a) => ({ type: 'travel' as const, token: a.travel, along: a.along, color: a.color, reverse: a.reverse })),
 }
 
 export type Action = z.output<(typeof ACTIONS)[keyof typeof ACTIONS]>
 
 export function parseAction(raw: unknown): Action {
-  const fields = z.record(z.unknown()).parse(raw)
+  const fields = z.record(z.string(), z.unknown()).parse(raw)
   const type = (Object.keys(ACTIONS) as (keyof typeof ACTIONS)[]).find((name) => name in fields)
   if (!type) throw new Error(`unknown action ${JSON.stringify(raw).slice(0, 60)}`)
   return ACTIONS[type].parse(fields)

@@ -1,0 +1,12 @@
+{
+  "provider": "lemonsqueezy",
+  "apiKey": "env:LEMONSQUEEZY_API_KEY",
+  "storeId": "12345",
+  "webhookSecret": "env:LEMONSQUEEZY_WEBHOOK_SECRET",
+  "variants": {
+    "creator:month": "111111",
+    "creator:year": "111112",
+    "pro:month": "222221",
+    "pro:year": "222222"
+  }
+}

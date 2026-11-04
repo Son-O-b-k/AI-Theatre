@@ -1,9 +1,9 @@
 // Recorded narration: every line of a chapter spoken by a voice model on the server.
 // Clips are recorded first and applied afterwards, matched by their text, so lines edited
 // while recording are simply recorded next time instead of getting the wrong clip.
+// Used by the app (changing voice) and by the server (new chapters), which supply `speak`.
 
 import type { SpeechClip } from '../shared/protocol'
-import { api } from './api'
 import { finalizeScene } from './scene/scene'
 import type { Scene } from './scene/schema'
 
@@ -19,15 +19,16 @@ export function unrecorded(scene: Scene, voice: string): string[] {
 
 export async function record(
   lines: string[],
-  voice: string,
+  speak: (line: string) => Promise<SpeechClip>,
   signal: AbortSignal,
   /** Called before each line with its index. */
   onLine: (index: number) => void,
 ): Promise<Map<string, SpeechClip>> {
   const clips = new Map<string, SpeechClip>()
   for (const [index, line] of lines.entries()) {
+    signal.throwIfAborted()
     onLine(index)
-    clips.set(line, await api.speak(line, voice, signal))
+    clips.set(line, await speak(line))
   }
   return clips
 }

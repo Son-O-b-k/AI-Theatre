@@ -1,15 +1,12 @@
 import { jsonrepair } from 'jsonrepair'
 import { z } from 'zod'
 import type { ChatMessage } from '../../shared/protocol'
-import { api } from '../api'
 import { applyOp, emptyScene, finalizeScene } from '../scene/scene'
 import { describeError, parseOp, type Scene } from '../scene/schema'
 import { PLAN_SYSTEM, SCENE_SYSTEM, planMessages, type Chapter } from './prompts'
 
-export interface ModelTarget {
-  provider: string
-  model: string
-}
+/** Streams a model's answer as text deltas. The server meters each call (server/lessons/jobs.ts). */
+export type Complete = (system: string, messages: ChatMessage[], signal: AbortSignal) => AsyncIterable<string>
 
 type Line = { ok: true; value: unknown } | { ok: false; line: string; error: string }
 
@@ -44,10 +41,6 @@ async function* jsonLines(chunks: AsyncIterable<string>): AsyncGenerator<Line> {
   if (last) yield last
 }
 
-function stream(target: ModelTarget, system: string, messages: ChatMessage[], signal: AbortSignal) {
-  return jsonLines(api.chat({ ...target, system, messages }, signal))
-}
-
 export interface SceneResult {
   scene: Scene
   /** Parts of the model's answer that could not be used. */
@@ -56,7 +49,7 @@ export interface SceneResult {
 
 /** Streams a scene, reporting every intermediate state so the stage can render it live. */
 export async function generateScene(
-  target: ModelTarget,
+  complete: Complete,
   messages: ChatMessage[],
   signal: AbortSignal,
   onProgress: (scene: Scene) => void,
@@ -65,7 +58,7 @@ export async function generateScene(
   const warnings: string[] = []
   const warn = (message: string) => warnings.push(message)
 
-  for await (const line of stream(target, SCENE_SYSTEM, messages, signal)) {
+  for await (const line of jsonLines(complete(SCENE_SYSTEM, messages, signal))) {
     if (!line.ok) {
       warn(`${line.error}: ${line.line.slice(0, 80)}`)
       continue
@@ -84,9 +77,9 @@ export async function generateScene(
 
 const ChapterSchema = z.object({ op: z.literal('chapter'), title: z.string().min(1), goal: z.string().min(1) })
 
-export async function planLesson(target: ModelTarget, topic: string, signal: AbortSignal): Promise<Chapter[]> {
+export async function planLesson(complete: Complete, topic: string, signal: AbortSignal): Promise<Chapter[]> {
   const chapters: Chapter[] = []
-  for await (const line of stream(target, PLAN_SYSTEM, planMessages(topic), signal)) {
+  for await (const line of jsonLines(complete(PLAN_SYSTEM, planMessages(topic), signal))) {
     const parsed = line.ok ? ChapterSchema.safeParse(line.value) : null
     if (parsed?.success) chapters.push({ title: parsed.data.title, goal: parsed.data.goal })
   }
