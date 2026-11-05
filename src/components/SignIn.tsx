@@ -1,5 +1,6 @@
 import { Loader2 } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
+import { PLANS } from '../../shared/plans'
 import type { InvitationDetails } from '../../shared/protocol'
 import { api } from '../api'
 import { Logo } from './Logo'
@@ -57,7 +58,7 @@ export function SignIn({ onSubmit, onForgot, invitation, initialError }: Props) 
     ? `${invitation.inviter} invited ${invitation.email}. ${mode === 'signup' ? 'Create your account' : 'Sign in'} to accept.`
     : {
         signin: 'Sign in to your lessons.',
-        signup: 'Start on the Free plan: 3 lessons a month, no card needed.',
+        signup: `Start on the Free plan: ${PLANS.free.lessons} lessons a month, no card needed.`,
         forgot: 'Enter your email and we will send you a link to choose a new password.',
       }[mode]
 
