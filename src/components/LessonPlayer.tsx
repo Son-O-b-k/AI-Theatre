@@ -3,6 +3,8 @@ import {
   AudioLines,
   Captions,
   FileJson,
+  Film,
+  GraduationCap,
   Image,
   Maximize,
   Minimize,
@@ -19,11 +21,12 @@ import {
   X,
 } from 'lucide-react'
 import { useEffect, useRef, useState, type MutableRefObject, type PointerEvent } from 'react'
-import type { VoiceInfo } from '../../shared/protocol'
+import type { Brand, VoiceInfo } from '../../shared/protocol'
 import { api } from '../api'
 import { download, downloadJson, slug } from '../download'
 import { BROWSER_VOICE, unrecorded } from '../narration'
 import { theatreProjectId, type Output } from '../project'
+import { brandResolved, brandTheatreState } from '../scene/brand'
 import { compile } from '../scene/compile'
 import { emptyScene } from '../scene/scene'
 import { SCENE_VERSION, type Cue, type Scene } from '../scene/schema'
@@ -53,13 +56,17 @@ interface Props {
   onEnded(): void
   onChange(output: Output): void
   onExportProject(): void
+  /** Opens the export dialog for a video or a SCORM package. */
+  onExport(kind: 'mp4' | 'scorm'): void
   onError(error: unknown): void
   /** Keyframe editing: Theatre Studio is shown on this chapter, and its edits are kept when this turns off. */
   editing: boolean
+  /** The workspace brand, applied to playback (not while editing keyframes, so it is never saved into a lesson). */
+  brand: Brand | null
   onEditKeyframes(): void
   voices: VoiceInfo[]
-  /** Recorded voices need a paid plan; choosing one then opens the plans instead. */
-  voicesLocked: boolean
+  /** Premium voices need the Pro plan; choosing one then opens the plans. */
+  premiumLocked: boolean
   /** Records the lesson's narration in another voice; unavailable while `recording`. */
   onVoiceChange(voice: string): void
   recording: boolean
@@ -110,7 +117,7 @@ export function LessonPlayer(props: Props) {
     if (!live) return
     // While the AI writes, show the board being written with everything visible as it arrives
     // (playback starts it hidden). Earlier boards share the same space, so they are left out.
-    const resolved = compile(live)
+    const resolved = brandResolved(compile(live), latest.current.brand)
     const board = live.boards.length - 1
     const elements = resolved.elements
       .filter((el) => el.boards.includes(board))
@@ -119,10 +126,11 @@ export function LessonPlayer(props: Props) {
   }, [live])
 
   // Remount Theatre only for a new revision or soundtrack; cue edits and Studio saves keep it running.
+  const brand = props.editing ? null : props.brand
   const mountKey = live
     ? 'live'
     : output && !outdated
-      ? `${theatreProjectId(output)}|${output.audio?.url ?? ''}`
+      ? `${theatreProjectId(output, Boolean(brand))}|${output.audio?.url ?? ''}|${JSON.stringify(brand)}`
       : 'empty'
 
   useEffect(() => {
@@ -134,9 +142,9 @@ export function LessonPlayer(props: Props) {
       return
     }
 
-    const resolved = compile(current.scene)
+    const resolved = brandResolved(compile(current.scene), brand)
     stage.render(resolved)
-    const mounted = mountScene(theatreProjectId(current), resolved, current.theatreState, stage)
+    const mounted = mountScene(theatreProjectId(current, Boolean(brand)), resolved, brandTheatreState(current.theatreState, brand), stage)
     const player = new Player(
       mounted.sheet.sequence,
       current.scene.cues,
@@ -253,7 +261,7 @@ export function LessonPlayer(props: Props) {
       <div className="flex flex-col gap-3" style={{ width: `min(100cqw, (100cqh - ${CONTROLS_HEIGHT}px) * 16 / 9)` }}>
         <div
           ref={frameRef}
-          className="grid place-items-center bg-board [&:fullscreen]:h-full [&:fullscreen]:[container-type:size]"
+          className="grid place-items-center [&:fullscreen]:bg-board [&:fullscreen]:h-full [&:fullscreen]:[container-type:size]"
         >
           <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-board shadow-xl ring-1 shadow-ink/15 ring-ink/10 [:fullscreen_&]:w-[min(100cqw,100cqh*16/9)] [:fullscreen_&]:rounded-none">
             <div
@@ -273,7 +281,7 @@ export function LessonPlayer(props: Props) {
               <button
                 onClick={() => playerRef.current?.play()}
                 aria-label="Play"
-                className="absolute top-1/2 left-1/2 grid size-16 -translate-x-1/2 -translate-y-1/2 cursor-pointer place-items-center rounded-full bg-white/10 text-chalk ring-1 ring-white/25 transition hover:scale-105 hover:bg-white/15"
+                className="absolute top-1/2 left-1/2 grid size-16 -translate-x-1/2 -translate-y-1/2 cursor-pointer place-items-center rounded-full bg-black/45 text-chalk ring-1 ring-white/25 transition hover:scale-105 hover:bg-black/60"
               >
                 <Play className="ml-1 size-7 fill-current" />
               </button>
@@ -399,7 +407,7 @@ export function LessonPlayer(props: Props) {
                 icon={AudioLines}
                 checked={narrate && voice === v.id}
                 disabled={!ready || props.recording}
-                hint={props.voicesLocked ? 'Creator' : undefined}
+                hint={v.premium ? (props.premiumLocked ? 'Pro' : 'Premium') : undefined}
                 onSelect={() => chooseVoice(v.id)}
               >
                 {v.label}
@@ -467,6 +475,12 @@ export function LessonPlayer(props: Props) {
               hint="SVG"
             >
               Current frame
+            </MenuItem>
+            <MenuItem icon={Film} disabled={!ready} onSelect={() => props.onExport('mp4')} hint="MP4">
+              Video
+            </MenuItem>
+            <MenuItem icon={GraduationCap} disabled={!ready} onSelect={() => props.onExport('scorm')} hint="SCORM">
+              Course for your LMS
             </MenuItem>
             <MenuItem icon={Package} disabled={!projectId} onSelect={props.onExportProject} hint="JSON">
               Whole project

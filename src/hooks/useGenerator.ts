@@ -100,13 +100,18 @@ export function useGenerator({ target, voice, project, output, create, update, s
   )
 
   const run = useCallback(
-    async (mode: Mode, prompt: string) => {
+    async (mode: Mode, prompt: string, language: string) => {
       setWarnings([])
       starting.current = true
       try {
-        const forProject = mode === 'teach' || !project ? (await create(titleFrom(prompt))).id : project.id
-        const { id } = await api.startJob({ mode, prompt, projectId: forProject, ...target, voice, output: mode === 'refine' ? output : undefined })
-        const job = follow(id, forProject)
+        let forProject = project?.id
+        if (mode === 'teach' || !project) {
+          forProject = (await create(titleFrom(prompt))).id
+          update((created) => ({ ...created, language }))
+        }
+        const request = { mode, prompt, projectId: forProject!, ...target, voice, language, output: mode === 'refine' ? output : undefined }
+        const { id } = await api.startJob(request)
+        const job = follow(id, forProject!)
         starting.current = false
         const delivered = await job
         if (mode !== 'refine' && delivered[0]) select(delivered[0])
@@ -117,7 +122,7 @@ export function useGenerator({ target, voice, project, output, create, update, s
         starting.current = false
       }
     },
-    [target, voice, project, output, create, follow, select, onError],
+    [target, voice, project, output, create, update, follow, select, onError],
   )
 
   // On opening a project: collect chapters finished while away, and rejoin a job still writing it.

@@ -24,6 +24,12 @@ export function AccountGate() {
   const [link, setLink] = useState(readLink)
   const [invitation, setInvitation] = useState<InvitationDetails | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  /** Set when single sign-on sent the person back with an error. */
+  const [ssoError] = useState(() => {
+    const error = new URLSearchParams(location.search).get('sso_error')
+    if (error) leaveLink()
+    return error
+  })
   /** Links are single-use; this keeps a link from being used twice (React may run effects twice). */
   const used = useRef(false)
 
@@ -63,7 +69,7 @@ export function AccountGate() {
   if (account === undefined || link?.kind === 'verify') return null
   if (account === null) {
     if (link?.kind === 'invite' && !invitation) return null
-    return <SignIn onSubmit={signIn} onForgot={api.forgotPassword} invitation={invitation ?? undefined} />
+    return <SignIn onSubmit={signIn} onForgot={api.forgotPassword} invitation={invitation ?? undefined} initialError={ssoError} />
   }
   if (link?.kind === 'invite') return null
   return <App account={account} onAccountChange={refresh} onSignOut={signOut} initialNotice={notice} />

@@ -133,4 +133,56 @@ export const MIGRATIONS: Migration[] = [
     );
     CREATE INDEX job_outputs_unclaimed ON job_outputs (workspace_id, project_id, claimed_at);`,
   ),
+  // Sharing, branding, exports, a workspace's own AI providers, and single sign-on.
+  sql(
+    () => `
+    ALTER TABLE workspaces ADD COLUMN brand TEXT;
+    CREATE TABLE shares (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+      project_id TEXT NOT NULL,
+      created_by TEXT NOT NULL REFERENCES users(id),
+      created_at TEXT NOT NULL,
+      revoked_at TEXT
+    );
+    CREATE INDEX shares_by_project ON shares (workspace_id, project_id);
+    CREATE TABLE exports (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+      project_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      status TEXT NOT NULL,
+      error TEXT,
+      file TEXT,
+      created_at TEXT NOT NULL,
+      finished_at TEXT
+    );
+    CREATE TABLE workspace_providers (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+      label TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      base_url TEXT,
+      api_key TEXT,
+      models TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE sso_connections (
+      workspace_id TEXT PRIMARY KEY REFERENCES workspaces(id),
+      domain TEXT NOT NULL UNIQUE,
+      issuer TEXT NOT NULL,
+      client_id TEXT NOT NULL,
+      client_secret TEXT NOT NULL,
+      enforced INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE sso_logins (
+      state TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+      code_verifier TEXT NOT NULL,
+      nonce TEXT NOT NULL,
+      redirect_uri TEXT NOT NULL,
+      expires_at TEXT NOT NULL
+    );`,
+  ),
 ]

@@ -1,5 +1,6 @@
 import { ArrowUp, Film, GraduationCap, Loader2, PenLine, Square, type LucideIcon } from 'lucide-react'
 import { useLayoutEffect, useRef } from 'react'
+import { DEFAULT_LANGUAGE, LANGUAGES } from '../../shared/languages'
 import type { Mode } from '../hooks/useGenerator'
 import { Button } from './ui/Button'
 import { cx } from './ui/cx'
@@ -23,6 +24,8 @@ interface Props {
   status: string
   warnings: string[]
   disabled?: boolean
+  /** The language picker, shown for new lessons; other languages are a Pro feature. */
+  language?: { value: string; onChange(value: string): void; locked: boolean }
   onSubmit(mode: Mode, prompt: string): void
   onStop(): void
 }
@@ -38,6 +41,7 @@ export function PromptBox({
   status,
   warnings,
   disabled,
+  language,
   onSubmit,
   onStop,
 }: Props) {
@@ -102,6 +106,24 @@ export function PromptBox({
               </Button>
             )
           })}
+
+          {language && current.mode === 'teach' && (
+            <select
+              value={language.value}
+              onChange={(e) => language.onChange(e.target.value)}
+              disabled={busy}
+              aria-label="Lesson language"
+              title={language.locked ? 'Other languages are part of the Pro plan' : 'The language the lesson is written and narrated in'}
+              className="h-8 max-w-36 cursor-pointer rounded-lg bg-transparent px-1.5 text-[13px] text-dim outline-none hover:bg-tint hover:text-ink"
+            >
+              {LANGUAGES.map((name) => (
+                <option key={name} value={name} disabled={language.locked && name !== DEFAULT_LANGUAGE}>
+                  {name}
+                  {language.locked && name !== DEFAULT_LANGUAGE ? ' (Pro)' : ''}
+                </option>
+              ))}
+            </select>
+          )}
 
           <span className="min-w-0 flex-1" />
 

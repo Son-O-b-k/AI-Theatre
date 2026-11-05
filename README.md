@@ -88,6 +88,22 @@ Lessons, subscriptions and usage belong to a **workspace**; each account has its
   npm run admin -- end-plan owner@school.org
   ```
 
+### Plan features
+
+Each plan lists what it `allows` in `shared/plans.ts`; the server checks that list (`server/features.ts`), the app hides or explains what is not included.
+
+| Feature | Plans | Where |
+| --- | --- | --- |
+| Share links and website embeds | Creator, Pro, Teams | `server/shares.ts`; public pages `/s/<id>` and `/embed/<id>` use the viewer in `src/viewer/` |
+| MP4 video with captions | Creator, Pro, Teams | `server/exports/video.ts`: frames drawn by the app's own `SvgStage` on a server-side DOM, sampled from the Theatre state (Studio edits included), rasterised with resvg in parallel worker threads, encoded with ffmpeg; narration mixed from the recorded clips |
+| Premium voices and other languages | Pro, Teams | `server/speech.ts` (any OpenAI-compatible speech API, set in `.env`), `shared/languages.ts` |
+| Brand colours and logo | Pro, Teams | `server/brand.ts`, `src/scene/brand.ts`: applied when lessons are shown, not stored in them |
+| Your own AI model and keys | Teams | `server/workspace-providers.ts`: keys encrypted (`server/secrets.ts`); lessons on them do not use the allowance |
+| SCORM 1.2 export | Teams | `server/exports/scorm.ts`: the standalone viewer (`npm run build` makes `dist-player/player.js`), lesson and media in one zip; reports completion |
+| Single sign-on | Teams | `server/sso.ts`: OpenID Connect (Google Workspace, Microsoft Entra, Okta…), code flow with PKCE, verified ID tokens, accounts and seats on first sign-in, optional "require SSO" |
+
+Workspace settings (team, brand, AI models, single sign-on) are one dialog: **Workspace** in the sidebar.
+
 ### Email
 
 All emails are in `server/email/templates/`: `layout.ts` is the shared frame (tables and inline styles, so it renders in every mail client), `index.ts` holds each email's words. `server/email/index.ts` sends them through SMTP when `SMTP_HOST` is set in `.env`, and otherwise writes them to `data/outbox/` and prints their links in the server log, so everything works before an email service is chosen.
@@ -133,7 +149,9 @@ Both sit behind the small async interface in `server/db/index.ts`, and the schem
 
 ## Security notes
 
-`npm audit` reports the image library `sharp`, which the voice model's toolkit (`@huggingface/transformers`) installs for image handling. No fixed version exists yet. AI Theatre never passes images to it, so the affected code is not reached; update `kokoro-js` when a fixed release appears.
+- Uploaded logos are served with a Content Security Policy that blocks scripts, so an SVG logo cannot run code.
+- Video export uses the ffmpeg binary from `@ffmpeg-installer/ffmpeg` (ffmpeg 4). It only reads our own recordings and soundtracks that a workspace uploaded itself; replace it with a current ffmpeg on servers if that matters to you.
+- `npm audit` reports the image library `sharp`, which the voice model's toolkit (`@huggingface/transformers`) installs for image handling. No fixed version exists yet. AI Theatre never passes images to it, so the affected code is not reached; update `kokoro-js` when a fixed release appears.
 
 ## Storage and export
 

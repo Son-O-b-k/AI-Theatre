@@ -1,6 +1,6 @@
 // The contract between the browser and the API server.
 
-import type { Interval, PlanId } from './plans'
+import type { Feature, Interval, PlanId } from './plans'
 
 export type ProviderKind = 'openai' | 'anthropic' | 'ollama'
 
@@ -35,6 +35,8 @@ export interface ProjectSummary {
 export interface VoiceInfo {
   id: string
   label: string
+  /** A premium voice (Pro and Teams), able to speak every supported language. */
+  premium?: boolean
 }
 
 /** `POST /api/speech` takes `{ text, voice }` and answers with the recorded clip. */
@@ -49,7 +51,8 @@ export interface BillingSummary {
   tokenAllowance: number
   tokensUsed: number
   canGenerate: boolean
-  recordedVoices: boolean
+  /** What the plan unlocks beyond lessons and seats. */
+  features: Feature[]
   subscription: {
     plan: PlanId
     interval: Interval
@@ -79,6 +82,8 @@ export interface AccountInfo {
   workspace: { id: string; role: Role }
   workspaces: WorkspaceInfo[]
   billing: BillingSummary
+  /** The workspace's brand, when its plan includes branding. */
+  brand: Brand | null
 }
 
 /** `GET /api/team`: the working workspace's people. */
@@ -107,6 +112,8 @@ export interface JobRequest extends ModelTarget {
   voice: string
   /** The chapter to revise (refine mode), as the app has it now. */
   output?: unknown
+  /** The lesson's language (shared/languages.ts); English when unset. */
+  language?: string
 }
 
 /** A finished chapter waiting for the app to add it to its project. */
@@ -124,3 +131,78 @@ export type JobEvent =
   | { type: 'warning'; message: string }
   | { type: 'output'; delivery: Delivery }
   | { type: 'end'; status: 'done' | 'failed' | 'cancelled'; error?: string }
+
+/** A workspace's look on its lessons (Pro and Teams). Colours are "#rrggbb". */
+export interface Brand {
+  /** The stage background. */
+  background: string
+  /** Replaces the default blue: boxes, cards, most shapes. */
+  primary: string
+  /** Replaces the default amber: highlights and travelling dots. */
+  highlight: string
+  /** URL of the logo shown in the corner of the stage, if any. */
+  logo?: string
+}
+
+/** A lesson as a viewer shows it (share pages, embeds, SCORM): chapters only, no prompts or history. */
+export interface ViewerLesson {
+  title: string
+  brand: Brand | null
+  chapters: ViewerChapter[]
+}
+
+export interface ViewerChapter {
+  id: string
+  title: string
+  revision: number
+  /** A Scene and its TheatreState (src/scene), as stored in the project. */
+  scene: unknown
+  theatreState: unknown
+  /** URL of the chapter's soundtrack, if one was added. */
+  soundtrack?: string
+}
+
+/** A lesson's public link (`/s/<id>`, embeddable at `/embed/<id>`). */
+export interface Share {
+  id: string
+  projectId: string
+  createdAt: string
+}
+
+/** `POST /api/exports` and `GET /api/exports/:id`: a video or SCORM package being made. */
+export interface ExportStatus {
+  id: string
+  kind: 'mp4' | 'scorm'
+  status: 'running' | 'done' | 'failed'
+  /** 0..1 while running. */
+  progress: number
+  error?: string
+}
+
+/** A workspace's own AI provider (Teams). The key is stored encrypted and never returned. */
+export interface WorkspaceProvider {
+  id: string
+  label: string
+  kind: ProviderKind
+  baseUrl?: string
+  models: string[]
+  hasKey: boolean
+}
+
+export interface NewWorkspaceProvider {
+  label: string
+  kind: ProviderKind
+  baseUrl?: string
+  apiKey?: string
+  models: string[]
+}
+
+/** A workspace's single sign-on (OpenID Connect). The client secret is never returned. */
+export interface SsoConnection {
+  /** Email domain that signs in this way, e.g. "school.org". */
+  domain: string
+  issuer: string
+  clientId: string
+  /** Password sign-in is turned off for the domain. */
+  enforced: boolean
+}

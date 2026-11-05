@@ -12,14 +12,18 @@ import { Billing, BillingError } from './billing/service'
 import { loadProviderConfigs } from './config'
 import { openDb } from './db'
 import { createMailer } from './email'
+import { Exports } from './exports'
 import { Jobs } from './lessons/jobs'
 import { createProvider } from './providers'
 import { aiRoutes } from './routes/ai'
 import { authRoutes } from './routes/auth'
 import { billingRoutes } from './routes/billing'
+import { exportRoutes } from './routes/exports'
+import { brandRoutes } from './routes/brand'
 import { jobRoutes } from './routes/jobs'
 import type { Deps } from './routes/context'
 import { projectRoutes } from './routes/projects'
+import { shareRoutes } from './routes/shares'
 import { teamRoutes } from './routes/team'
 
 // Settings (database, payment and AI keys) can live in .env; see .env.example.
@@ -35,12 +39,17 @@ const providers = new Map((await loadProviderConfigs()).map((config) => [config.
 const deps: Deps = { db, billing, providers, mailer: createMailer() }
 const jobs = new Jobs(db, billing, providers)
 await jobs.recover()
+const exports = new Exports(db, billing)
+await exports.recover()
 
 const app = new Hono()
 app.route('/api/auth', authRoutes(deps))
 app.route('/api/billing', billingRoutes(deps))
 app.route('/api/team', teamRoutes(deps))
+app.route('/api/brand', brandRoutes(deps))
+app.route('/api/shares', shareRoutes(deps))
 app.route('/api/jobs', jobRoutes(deps, jobs))
+app.route('/api/exports', exportRoutes(deps, exports))
 app.route('/api/projects', projectRoutes(deps))
 app.route('/api', aiRoutes(deps))
 

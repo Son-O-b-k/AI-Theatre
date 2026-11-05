@@ -110,13 +110,13 @@ describe('lesson jobs', () => {
     release()
     await finish(jobs, id)
 
-    await billing.recordUsage(account.workspaceId, 'chat', 2.5 * LESSON_TOKENS) // Free: 3 lessons
+    await billing.recordUsage(account.workspaceId, 'chat', 4.5 * LESSON_TOKENS) // Free: 5 lessons
     await assert.rejects(jobs.start(account, request('teach')), (e: JobError) => e.status === 402 && /needs about 1 lesson/.test(e.message))
     await finish(jobs, await jobs.start(account, request('scene'))) // a quarter lesson still fits
   })
 
   test('a lesson stops between chapters once the allowance is used up', async () => {
-    await billing.recordUsage(account.workspaceId, 'chat', 2 * LESSON_TOKENS)
+    await billing.recordUsage(account.workspaceId, 'chat', 4 * LESSON_TOKENS)
     const jobs = jobsWith({
       ...scriptedProvider(),
       // Each answer costs most of a lesson.

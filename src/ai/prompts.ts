@@ -1,3 +1,4 @@
+import { DEFAULT_LANGUAGE } from '../../shared/languages'
 import type { ChatMessage } from '../../shared/protocol'
 import { ICON_NAMES } from '../scene/icons'
 import { PALETTE } from '../scene/palette'
@@ -109,4 +110,12 @@ Revise it: ${prompt}
 Reply with the complete revised scene in the format described above.`,
     },
   ]
+}
+
+/** Asks for the lesson in another language; ids and JSON stay English so parsing is unchanged. */
+export function inLanguage(messages: ChatMessage[], language: string): ChatMessage[] {
+  if (language === DEFAULT_LANGUAGE) return messages
+  const last = messages[messages.length - 1]
+  const note = `Write everything the learner reads or hears (titles, labels, notes and narration) in ${language}. Keep ids and JSON keys in English.`
+  return [...messages.slice(0, -1), { ...last, content: `${last.content}\n\n${note}` }]
 }

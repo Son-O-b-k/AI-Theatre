@@ -8,8 +8,9 @@
 import { LESSON_TOKENS } from '../../shared/plans'
 import type { ChatMessage, Delivery, JobEvent, JobMode, JobRequest } from '../../shared/protocol'
 import { generateScene, planLesson, type Complete } from '../../src/ai/generate'
-import { chapterMessages, refineMessages, sceneMessages } from '../../src/ai/prompts'
-import { BROWSER_VOICE, record, unrecorded, withNarration } from '../../src/narration'
+import { DEFAULT_LANGUAGE } from '../../shared/languages'
+import { chapterMessages, inLanguage, planMessages, refineMessages, sceneMessages } from '../../src/ai/prompts'
+import { record, unrecorded, withNarration } from '../../src/narration'
 import { newOutput, reviseOutput, titleFrom, type Output, type Turn } from '../../src/project'
 import type { Scene } from '../../src/scene/schema'
 import type { Account } from '../accounts'
@@ -17,6 +18,9 @@ import type { Billing } from '../billing/service'
 import { newId, now, type Db } from '../db'
 import type { Provider } from '../providers/types'
 import * as speech from '../speech'
+import { planFor } from '../features'
+import { isWorkspaceProvider, workspaceProvider } from '../workspace-providers'
+import { OWN_KEY_USAGE } from '../billing/repo'
 
 export class JobError extends Error {
   constructor(message: string, readonly status: 400 | 402 | 404 | 409 = 400) {
@@ -91,15 +95,36 @@ export class Jobs {
     if ([...this.jobs.values()].some((job) => job.workspaceId === workspaceId && !job.end)) {
       throw new JobError('This workspace is already writing a lesson. Wait for it to finish or stop it.', 409)
     }
-    const provider = this.providers.get(request.provider)
-    if (!provider) throw new JobError(`Unknown provider: ${request.provider}`, 404)
     if (request.mode === 'refine' && !request.output) throw new JobError('Choose the chapter to change.')
-
     const allowance = await this.billing.entitlements(workspaceId)
+
+    // The workspace's own provider (Teams) is paid for by the workspace, so it skips the allowance.
+    const own = isWorkspaceProvider(request.provider)
+    if (own && !allowance.features.includes('ownProviders')) {
+      throw new JobError(`Your own AI provider is part of the ${planFor('ownProviders').name} plan.`, 402)
+    }
+    const provider = own ? await workspaceProvider(this.db, workspaceId, request.provider) : this.providers.get(request.provider)
+    if (!provider) throw new JobError(`Unknown provider: ${request.provider}`, 404)
+
     const left = (allowance.tokenAllowance - allowance.tokensUsed) / LESSON_TOKENS
-    if (left < NEEDS[request.mode]) {
+    if (!own && left < NEEDS[request.mode]) {
       const what = request.mode === 'teach' ? 'A new lesson needs about 1 lesson' : 'This needs about a quarter of a lesson'
       throw new JobError(`${what} of your monthly allowance, and ${Math.max(0, left).toFixed(1)} is left. Upgrade for more.`, 402)
+    }
+
+    // Other languages and premium voices are Pro features; other languages need a premium voice.
+    const language = request.language ?? DEFAULT_LANGUAGE
+    const premium = allowance.features.includes('premiumVoices')
+    if (language !== DEFAULT_LANGUAGE && !premium) {
+      throw new JobError(`Lessons in other languages are part of the ${planFor('premiumVoices').name} plan. Upgrade to use them.`, 402)
+    }
+    if (speech.isPremium(request.voice) && !premium) {
+      throw new JobError(`Premium voices are part of the ${planFor('premiumVoices').name} plan. Upgrade to use them.`, 402)
+    }
+    let voice = request.voice
+    if (language !== DEFAULT_LANGUAGE && !speech.isPremium(voice)) {
+      if (!speech.premiumAvailable()) throw new JobError('Lessons in other languages need premium voices, which are not set up on this server yet.')
+      voice = 'premium:coral'
     }
 
     const job = new Job(newId(), workspaceId, request.projectId)
@@ -108,9 +133,8 @@ export class Jobs {
       job.id, workspaceId, request.projectId, request.mode, request.prompt, now(),
     )
     this.jobs.set(job.id, job)
-    const voice = allowance.recordedVoices ? request.voice : BROWSER_VOICE
     // Runs in the background; an error escaping it would crash the server, so it is logged instead.
-    this.run(job, provider, { ...request, voice }).catch((error) => console.error(`Job ${job.id} failed to finish:`, error))
+    this.run(job, provider, { ...request, voice, language }, own).catch((error) => console.error(`Job ${job.id} failed to finish:`, error))
     return job.id
   }
 
@@ -151,7 +175,7 @@ export class Jobs {
     return job
   }
 
-  private async run(job: Job, provider: Provider, request: JobRequest): Promise<void> {
+  private async run(job: Job, provider: Provider, request: JobRequest, own: boolean): Promise<void> {
     const { signal } = job.abort
     const turn: Turn = { prompt: request.prompt, provider: request.provider, model: request.model, at: now() }
 
@@ -165,7 +189,7 @@ export class Jobs {
         }
       } finally {
         // Whatever the model produced was paid for, even if the job was stopped.
-        await billing.recordUsage(job.workspaceId, 'chat', estimateTokens(characters))
+        await billing.recordUsage(job.workspaceId, own ? OWN_KEY_USAGE : 'chat', estimateTokens(characters))
       }
     }
 
@@ -194,9 +218,10 @@ export class Jobs {
       }
     }
 
+    const language = request.language ?? DEFAULT_LANGUAGE
     const scene = async (label: string, messages: ChatMessage[]): Promise<Scene> => {
       job.emit({ type: 'status', text: `${label}: waiting for the model…` })
-      const result = await generateScene(complete, messages, signal, (partial) => {
+      const result = await generateScene(complete, inLanguage(messages, language), signal, (partial) => {
         job.emit({ type: 'live', scene: partial })
         job.emit({ type: 'status', text: `${label}: ${partial.boards.length} boards, ${partial.elements.length} shapes, ${partial.beats.length} beats` })
       })
@@ -214,10 +239,10 @@ export class Jobs {
         await deliver(newOutput(titleFrom(request.prompt), await scene('Writing scene', sceneMessages(request.prompt)), turn))
       } else {
         job.emit({ type: 'status', text: 'Planning the lesson…' })
-        const outline = await planLesson(complete, request.prompt, signal)
+        const outline = await planLesson(complete, inLanguage(planMessages(request.prompt), language), signal)
         const titles = outline.map((chapter) => chapter.title)
         for (const [index, chapter] of outline.entries()) {
-          if (index > 0 && !(await this.billing.entitlements(job.workspaceId)).canGenerate) {
+          if (index > 0 && !own && !(await this.billing.entitlements(job.workspaceId)).canGenerate) {
             job.emit({ type: 'warning', message: `stopped after ${index} chapters: this month's allowance is used up` })
             break
           }

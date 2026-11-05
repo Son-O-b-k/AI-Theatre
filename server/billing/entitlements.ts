@@ -1,6 +1,6 @@
 // What a workspace may do, from its subscription and usage. Pure functions, no I/O.
 
-import { LESSON_TOKENS, PLAN_ORDER, PLANS, type PlanId } from '../../shared/plans'
+import { LESSON_TOKENS, PLAN_ORDER, PLANS, type Feature, type PlanId } from '../../shared/plans'
 import type { Subscription } from './repo'
 
 /** Statuses that keep paid access. `past_due` is the provider's retry window: a grace period. */
@@ -35,10 +35,11 @@ export interface Entitlements {
   tokensUsed: number
   /** Generation is allowed while any allowance is left; the request in flight may finish over it. */
   canGenerate: boolean
-  recordedVoices: boolean
+  /** What the plan unlocks beyond lessons and seats. */
+  features: Feature[]
 }
 
 export function entitlements(plan: PlanId, tokensUsed: number): Entitlements {
   const tokenAllowance = PLANS[plan].lessons * LESSON_TOKENS
-  return { plan, tokenAllowance, tokensUsed, canGenerate: tokensUsed < tokenAllowance, recordedVoices: PLANS[plan].recordedVoices }
+  return { plan, tokenAllowance, tokensUsed, canGenerate: tokensUsed < tokenAllowance, features: PLANS[plan].allows }
 }

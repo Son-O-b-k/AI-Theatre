@@ -2,15 +2,21 @@ import type { Interval } from '../shared/plans'
 import type {
   AccountInfo,
   BillingSummary,
+  Brand,
   Delivery,
+  ExportStatus,
   InvitationDetails,
   JobEvent,
   JobRequest,
   ProjectSummary,
   ProviderInfo,
+  Share,
   SpeechClip,
+  SsoConnection,
   Team,
   VoiceInfo,
+  WorkspaceProvider,
+  NewWorkspaceProvider,
 } from '../shared/protocol'
 import type { Project } from './project'
 
@@ -53,6 +59,27 @@ export const api = {
   forgotPassword: (email: string) => call<void>('/api/auth/password/forgot', json('POST', { email })),
   resetPassword: (token: string, password: string) => call<{ email: string }>('/api/auth/password/reset', json('POST', { token, password })),
   switchWorkspace: (workspaceId: string) => call<void>('/api/auth/workspace', json('POST', { workspaceId })),
+
+  shareFor: (projectId: string) => call<Share | null>(`/api/shares?projectId=${encodeURIComponent(projectId)}`),
+  share: (projectId: string) => call<Share>('/api/shares', json('POST', { projectId })),
+  revokeShare: (id: string) => call<void>(`/api/shares/${id}`, { method: 'DELETE' }),
+
+  brand: () => call<Brand | null>('/api/brand'),
+  saveBrand: (colors: Omit<Brand, 'logo'>) => call<Brand>('/api/brand', json('PUT', colors)),
+  clearBrand: () => call<void>('/api/brand', { method: 'DELETE' }),
+  uploadLogo: (file: File) => call<Brand>('/api/brand/logo', { method: 'PUT', headers: { 'content-type': file.type }, body: file }),
+
+  startExport: (projectId: string, kind: 'mp4' | 'scorm') => call<ExportStatus>('/api/exports', json('POST', { projectId, kind })),
+  exportStatus: (id: string) => call<ExportStatus>(`/api/exports/${id}`),
+
+  workspaceProviders: () => call<WorkspaceProvider[]>('/api/workspace-providers'),
+  addWorkspaceProvider: (provider: NewWorkspaceProvider) => call<WorkspaceProvider>('/api/workspace-providers', json('POST', provider)),
+  removeWorkspaceProvider: (id: string) => call<void>(`/api/workspace-providers/${id}`, { method: 'DELETE' }),
+
+  ssoCheck: (email: string) => call<{ sso: boolean; enforced: boolean }>(`/api/auth/sso?email=${encodeURIComponent(email)}`),
+  sso: () => call<SsoConnection | null>('/api/team/sso'),
+  saveSso: (connection: SsoConnection & { clientSecret?: string }) => call<SsoConnection>('/api/team/sso', json('PUT', connection)),
+  removeSso: () => call<void>('/api/team/sso', { method: 'DELETE' }),
 
   team: () => call<Team>('/api/team'),
   renameTeam: (name: string) => call<Team>('/api/team', json('PATCH', { name })),

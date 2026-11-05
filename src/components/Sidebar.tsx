@@ -213,8 +213,8 @@ function AccountCard({ account, onOpenBilling, onOpenTeam, onSwitchWorkspace, on
         <Button variant={billing.plan === 'free' ? 'primary' : 'secondary'} size="sm" className="flex-1 justify-center" onClick={onOpenBilling}>
           {billing.plan === 'free' ? 'Upgrade' : `${plan.name} plan`}
         </Button>
-        <Button variant="secondary" size="sm" onClick={onOpenTeam} title="People in this workspace">
-          <Users className="size-3.5" /> Team
+        <Button variant="secondary" size="sm" onClick={onOpenTeam} title="Team, brand and workspace settings">
+          <Users className="size-3.5" /> Workspace
         </Button>
       </div>
     </div>

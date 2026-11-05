@@ -23,12 +23,13 @@ interface Props {
   busy: boolean
   status: string
   warnings: string[]
+  language: Parameters<typeof PromptBox>[0]['language']
   onRun(mode: Mode, prompt: string): void
   onStop(): void
   onOpen(id: string): void
 }
 
-export function Home({ recent, busy, status, warnings, onRun, onStop, onOpen }: Props) {
+export function Home({ recent, busy, status, warnings, language, onRun, onStop, onOpen }: Props) {
   // The landing page hands over a question as ?q=.
   const [prompt, setPrompt] = useState(() => new URLSearchParams(location.search).get('q') ?? '')
   const [mode, setMode] = useState<Mode>('teach')
@@ -53,6 +54,7 @@ export function Home({ recent, busy, status, warnings, onRun, onStop, onOpen }: 
           busy={busy}
           status={status}
           warnings={warnings}
+          language={language}
           onSubmit={onRun}
           onStop={onStop}
         />

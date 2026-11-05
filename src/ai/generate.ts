@@ -3,7 +3,7 @@ import { z } from 'zod'
 import type { ChatMessage } from '../../shared/protocol'
 import { applyOp, emptyScene, finalizeScene } from '../scene/scene'
 import { describeError, parseOp, type Scene } from '../scene/schema'
-import { PLAN_SYSTEM, SCENE_SYSTEM, planMessages, type Chapter } from './prompts'
+import { PLAN_SYSTEM, SCENE_SYSTEM, type Chapter } from './prompts'
 
 /** Streams a model's answer as text deltas. The server meters each call (server/lessons/jobs.ts). */
 export type Complete = (system: string, messages: ChatMessage[], signal: AbortSignal) => AsyncIterable<string>
@@ -77,9 +77,9 @@ export async function generateScene(
 
 const ChapterSchema = z.object({ op: z.literal('chapter'), title: z.string().min(1), goal: z.string().min(1) })
 
-export async function planLesson(complete: Complete, topic: string, signal: AbortSignal): Promise<Chapter[]> {
+export async function planLesson(complete: Complete, messages: ChatMessage[], signal: AbortSignal): Promise<Chapter[]> {
   const chapters: Chapter[] = []
-  for await (const line of jsonLines(complete(PLAN_SYSTEM, planMessages(topic), signal))) {
+  for await (const line of jsonLines(complete(PLAN_SYSTEM, messages, signal))) {
     const parsed = line.ok ? ChapterSchema.safeParse(line.value) : null
     if (parsed?.success) chapters.push({ title: parsed.data.title, goal: parsed.data.goal })
   }

@@ -4,6 +4,9 @@
 export type PlanId = 'free' | 'creator' | 'pro' | 'teams'
 export type Interval = 'month' | 'year'
 
+/** What a plan unlocks beyond its lessons and seats. The server checks these, not the marketing text. */
+export type Feature = 'shareLinks' | 'videoExport' | 'premiumVoices' | 'branding' | 'ownProviders' | 'scorm' | 'sso'
+
 export interface Plan {
   id: PlanId
   name: string
@@ -14,12 +17,11 @@ export interface Plan {
   lessons: number
   /** People who can work in the workspace; a Teams contract may set more. */
   seats: number
-  /** Narration recorded with natural voices; otherwise the browser reads it. */
-  recordedVoices: boolean
+  allows: Feature[]
   /** Sold through self-serve checkout. */
   selfServe: boolean
-  /** Shown on the pricing page; `soon` marks features not built yet. */
-  features: { text: string; soon?: boolean }[]
+  /** Shown on the pricing page. */
+  features: string[]
 }
 
 /**
@@ -28,17 +30,21 @@ export interface Plan {
  */
 export const LESSON_TOKENS = 20_000
 
+const CREATOR: Feature[] = ['shareLinks', 'videoExport']
+const PRO: Feature[] = [...CREATOR, 'premiumVoices', 'branding']
+const TEAMS: Feature[] = [...PRO, 'ownProviders', 'scorm', 'sso']
+
 export const PLANS: Record<PlanId, Plan> = {
   free: {
     id: 'free',
     name: 'Free',
     blurb: 'To see what it can do.',
     price: { month: 0, year: 0 },
-    lessons: 3,
+    lessons: 5,
     seats: 1,
-    recordedVoices: false,
+    allows: [],
     selfServe: false,
-    features: [{ text: '3 lessons a month' }, { text: 'Browser voice' }, { text: 'Watch and edit in the app' }],
+    features: ['5 lessons a month', 'Natural recorded voices', 'Watch and edit in the app'],
   },
   creator: {
     id: 'creator',
@@ -47,14 +53,9 @@ export const PLANS: Record<PlanId, Plan> = {
     price: { month: 15, year: 150 },
     lessons: 30,
     seats: 1,
-    recordedVoices: true,
+    allows: CREATOR,
     selfServe: true,
-    features: [
-      { text: '30 lessons a month' },
-      { text: 'Natural recorded voices' },
-      { text: 'Share links and embeds', soon: true },
-      { text: 'MP4 video export', soon: true },
-    ],
+    features: ['30 lessons a month', 'Everything in Free', 'Share links and embeds', 'MP4 video export with captions'],
   },
   pro: {
     id: 'pro',
@@ -63,14 +64,9 @@ export const PLANS: Record<PlanId, Plan> = {
     price: { month: 39, year: 390 },
     lessons: 100,
     seats: 1,
-    recordedVoices: true,
+    allows: PRO,
     selfServe: true,
-    features: [
-      { text: '100 lessons a month' },
-      { text: 'Everything in Creator' },
-      { text: 'Premium voices and languages', soon: true },
-      { text: 'Your own brand colours', soon: true },
-    ],
+    features: ['100 lessons a month', 'Everything in Creator', 'Premium voices and other languages', 'Your own brand colours and logo'],
   },
   teams: {
     id: 'teams',
@@ -79,13 +75,13 @@ export const PLANS: Record<PlanId, Plan> = {
     price: null,
     lessons: 400,
     seats: 5,
-    recordedVoices: true,
+    allows: TEAMS,
     selfServe: false,
     features: [
-      { text: 'Shared team library and invitations' },
-      { text: 'Your own AI model and keys', soon: true },
-      { text: 'SCORM export for your LMS', soon: true },
-      { text: 'Single sign-on', soon: true },
+      'Everything in Pro, shared by the team',
+      'Your own AI model and keys',
+      'SCORM export for your LMS',
+      'Single sign-on (Google, Microsoft, Okta)',
     ],
   },
 }

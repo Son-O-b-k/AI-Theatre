@@ -1,5 +1,5 @@
 // Builds the investor brief from the projection model and screenshots in this folder.
-// Rebuild: python3 model.py model.json && npm i --no-save docx@9 && node build-brief.js ../AI-Theatre-Investor-Brief.docx
+// Rebuild: python3 model.py model.json && npm i --no-save docx@9 && node build-brief.cjs ../AI-Theatre-Investor-Brief.docx
 // (re-draw mrr.svg / mrr.png if the model changes).
 const fs = require('fs')
 const path = require('path')
@@ -109,7 +109,11 @@ const children = [
   bullet('Animation timed to the actual recorded voice, so picture and sound stay in step.'),
   bullet('Editing: rewrite any line or ask for changes in plain language; a full keyframe editor for fine control.'),
   bullet('Works with OpenAI-compatible models, Anthropic models, and open models running on our own servers.'),
-  bullet('Export of lessons as project files and animation data; a public landing page; 19 automated tests covering layout, timing and narration.'),
+  bullet('Lessons are written on our servers as background jobs, metered against each plan, and keep going if the browser is closed.'),
+  bullet('Sharing and export: public share links and website embeds, MP4 videos with narration and captions, and SCORM packages for learning systems.'),
+  bullet('Premium voices and lessons in 16 languages; brand colours and logo applied to every lesson, share page and video.'),
+  bullet('Business foundations: accounts with email confirmation and password reset, team workspaces with seats and invitations, single sign-on (Google, Microsoft, Okta), a workspace\u2019s own AI keys stored encrypted, and subscriptions with proration and discount codes.'),
+  bullet('SQLite or Postgres, and 60 automated tests covering layout, timing, billing, accounts, jobs and every plan feature.'),
   pageBreak(),
 
   // 4. Market
@@ -140,13 +144,13 @@ const children = [
   p('A freemium subscription with a monthly lesson allowance, plus team plans. Prices below are our proposed starting points, to be tested with early users.'),
   table([
     ['Plan', 'Price', 'Includes'],
-    ['Free', '$0', '3 lessons a month, browser voice, watermark, share links'],
-    ['Creator', '$15 / month', '30 lessons a month, natural voices, video (MP4) export, embeds'],
-    ['Pro', '$39 / month', '100 lessons a month, premium voices and languages, brand themes, LMS (SCORM) export'],
-    ['Teams', 'from about $400 / month', 'Seats, shared library, single sign-on, LMS integration, option to use the customer’s own AI model'],
+    ['Free', '$0', '5 lessons a month, natural recorded voices, watch and edit in the app'],
+    ['Creator', '$15 / month', '30 lessons a month, share links and website embeds, MP4 video export with captions'],
+    ['Pro', '$39 / month', '100 lessons a month, premium voices and 16 languages, brand colours and logo'],
+    ['Teams', 'from about $400 / month', '400 lessons a month shared by the team, seats, the customer\u2019s own AI model and keys, SCORM export, single sign-on'],
   ], [1700, 2300, 5638], { firstColBold: true }),
   spacer(),
-  p('**Why allowances work here.** Our main cost is AI model usage per lesson. A monthly allowance ties cost to price on every plan, and the free plan uses a low-cost model and the browser voice so that free users cost very little.'),
+  p('**Why allowances work here.** Our main cost is AI model usage per lesson. A monthly allowance ties cost to price on every plan, and the free plan uses a low-cost model so that free users cost very little.'),
   p('**Payments.** Card subscriptions through a merchant-of-record service such as Paddle or Lemon Squeezy, which handles sales tax worldwide, and Paystack or Flutterwave for customers paying in naira.'),
 
   // 7. Unit economics
@@ -228,10 +232,10 @@ const children = [
   h1('10. Roadmap'),
   table([
     ['When', 'Milestone'],
-    ['Months 1–3', 'Accounts, server-side lesson generation, database and backups, share links, MP4 video and subtitle export, billing. Closed beta.'],
+    ['Months 1–3', 'Hosting, backups and monitoring; payments live; closed beta with teachers and creators. (Every plan feature is already built.)'],
     ['Months 4–6', 'Paid launch (Creator and Pro). In-lesson quizzes. Accuracy-check pass.'],
-    ['Months 7–12', 'Team plans, LMS (SCORM) export, premium voices and more languages, brand themes. First team customers.'],
-    ['Months 13–24', 'Learning-system integrations, single sign-on, API for education platforms. About 1,000 paying users and 20+ teams.'],
+    ['Months 7–12', 'First team customers; school and company pilots with SCORM and single sign-on. Vertical video for social media.'],
+    ['Months 13–24', 'Learning-system integrations, API for education platforms. About 1,000 paying users and 20+ teams.'],
   ], [2000, 7638], { firstColBold: true }),
   h1('11. The ask'),
   p(`We propose raising **[$600,000]** in a pre-seed round. In the base case this funds about 24 months, through ${money(-cum24)} of spending, and keeps a reserve for slower growth.`),

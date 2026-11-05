@@ -18,7 +18,7 @@ export function useProviders(onError: (error: unknown) => void) {
   const [providers, setProviders] = useState<ProviderInfo[]>([])
   const [target, setTargetState] = useState(loadTarget)
 
-  useEffect(() => {
+  const refresh = useCallback(() => {
     api
       .providers()
       .then((list) => {
@@ -32,6 +32,8 @@ export function useProviders(onError: (error: unknown) => void) {
       .catch(onError)
   }, [onError])
 
+  useEffect(refresh, [refresh])
+
   const setTarget = useCallback((next: ModelTarget) => {
     setTargetState(next)
     try {
@@ -41,5 +43,5 @@ export function useProviders(onError: (error: unknown) => void) {
     }
   }, [])
 
-  return { providers, target, setTarget }
+  return { providers, target, setTarget, refresh }
 }

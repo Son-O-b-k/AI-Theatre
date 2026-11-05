@@ -26,6 +26,8 @@ export interface Project {
   name: string
   createdAt: string
   updatedAt: string
+  /** The language its chapters are written and narrated in (shared/languages.ts); English when unset. */
+  language?: string
   outputs: Output[]
 }
 
@@ -73,11 +75,12 @@ export function retimed(output: Output, scene: Scene): Output {
 }
 
 /**
- * Theatre keeps one project per id, so every revision gets its own. Studio lists these ids,
+ * Theatre keeps one project per id, so every revision (and its branded copy) gets its own. Studio lists these ids,
  * so they start with the chapter title; Theatre allows at most 32 characters.
  */
-export function theatreProjectId(output: Output): string {
-  const suffix = ` (${output.id.slice(0, 4)}·r${output.revision})`
+export function theatreProjectId(output: Pick<Output, 'id' | 'title' | 'revision'>, branded = false): string {
+  // A branded copy has other colours, so Theatre must hold it as a separate project.
+  const suffix = ` (${output.id.slice(0, 4)}·${branded ? 'b' : 'r'}${output.revision})`
   const max = 32 - suffix.length
   const full = output.title.replace(/^\d+\.\s*/, '').trim()
   const title = full.length > max ? full.slice(0, max + 1).replace(/\s+\S*$/, '') : full

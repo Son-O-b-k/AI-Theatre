@@ -1,7 +1,9 @@
 import { Loader2 } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import type { InvitationDetails } from '../../shared/protocol'
+import { api } from '../api'
 import { Logo } from './Logo'
+import { cx } from './ui/cx'
 import { Button } from './ui/Button'
 
 type Mode = 'signin' | 'signup' | 'forgot'
@@ -11,13 +13,17 @@ interface Props {
   onForgot(email: string): Promise<void>
   /** Signing in to accept this invitation: the address is fixed and the heading names the team. */
   invitation?: InvitationDetails
+  /** Shown on arrival, e.g. why single sign-on failed. */
+  initialError?: string | null
 }
 
-export function SignIn({ onSubmit, onForgot, invitation }: Props) {
+export function SignIn({ onSubmit, onForgot, invitation, initialError }: Props) {
   const [mode, setMode] = useState<Mode>(invitation ? 'signup' : 'signin')
   const [email, setEmail] = useState(invitation?.email ?? '')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(initialError ?? null)
+  /** Whether the address's organisation uses single sign-on (and requires it). */
+  const [sso, setSso] = useState({ sso: false, enforced: false })
   const [sent, setSent] = useState(false)
   const [busy, setBusy] = useState(false)
 
@@ -69,8 +75,23 @@ export function SignIn({ onSubmit, onForgot, invitation }: Props) {
             submit()
           }}
         >
-          <Field label="Email" type="email" autoComplete="email" value={email} onChange={setEmail} readOnly={Boolean(invitation)} />
-          {mode !== 'forgot' && (
+          <Field
+            label="Email"
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={setEmail}
+            onBlur={() => /^\S+@\S+\.\S+$/.test(email) && api.ssoCheck(email).then(setSso, () => {})}
+            readOnly={Boolean(invitation)}
+          />
+          {sso.sso && mode !== 'forgot' && (
+            <a href={`/api/auth/sso/start?email=${encodeURIComponent(email)}`} className="block">
+              <Button variant="primary" className="w-full justify-center">
+                Continue with single sign-on
+              </Button>
+            </a>
+          )}
+          {mode !== 'forgot' && !sso.enforced && (
             <Field
               label="Password"
               type="password"
@@ -85,7 +106,12 @@ export function SignIn({ onSubmit, onForgot, invitation }: Props) {
               {error}
             </p>
           )}
-          <Button type="submit" variant="primary" className="w-full justify-center" disabled={busy || !email || (mode !== 'forgot' && !password)}>
+          <Button
+            type="submit"
+            variant={sso.sso && mode !== 'forgot' ? 'secondary' : 'primary'}
+            className={cx('w-full justify-center', sso.enforced && mode !== 'forgot' && 'hidden')}
+            disabled={busy || !email || (mode !== 'forgot' && !password)}
+          >
             {busy && <Loader2 className="size-4 animate-spin" />}
             {{ signin: 'Sign in', signup: 'Create account', forgot: 'Send reset link' }[mode]}
           </Button>
@@ -140,6 +166,7 @@ interface FieldProps {
   hint?: string
   readOnly?: boolean
   onChange(value: string): void
+  onBlur?(): void
 }
 
 export function Field({ label, hint, onChange, ...input }: FieldProps) {

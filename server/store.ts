@@ -8,7 +8,8 @@ import { join, resolve } from 'node:path'
 import { HTTPException } from 'hono/http-exception'
 import type { ProjectSummary } from '../shared/protocol'
 
-const ROOT = resolve(process.env.DATA_DIR ?? 'data')
+// Read when used: the server reads .env after its modules load, and tests point it elsewhere.
+const root = () => resolve(process.env.DATA_DIR ?? 'data')
 
 const SAFE_ID = /^[\w-]{1,64}$/
 const SAFE_FILE = /^[\w-][\w.-]{0,99}$/
@@ -18,7 +19,7 @@ function safe(value: string, pattern: RegExp): string {
   return value
 }
 
-const workspaceDir = (workspace: string) => join(ROOT, 'workspaces', safe(workspace, SAFE_ID))
+const workspaceDir = (workspace: string) => join(root(), 'workspaces', safe(workspace, SAFE_ID))
 const projectsDir = (workspace: string) => join(workspaceDir(workspace), 'projects')
 const projectFile = (workspace: string, id: string) => join(projectsDir(workspace), `${safe(id, SAFE_ID)}.json`)
 const assetsDir = (workspace: string, projectId: string) => join(workspaceDir(workspace), 'assets', safe(projectId, SAFE_ID))
@@ -73,7 +74,7 @@ export async function writeAsset(workspace: string, projectId: string, name: str
 /** Lessons made before accounts existed (data/projects, data/assets) move into the first workspace. */
 export async function adoptLegacyProjects(workspace: string): Promise<void> {
   for (const folder of ['projects', 'assets']) {
-    const legacy = join(ROOT, folder)
+    const legacy = join(root(), folder)
     if (!existsSync(legacy)) continue
     await mkdir(workspaceDir(workspace), { recursive: true })
     await rename(legacy, join(workspaceDir(workspace), folder))

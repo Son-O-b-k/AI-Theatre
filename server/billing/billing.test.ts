@@ -43,8 +43,8 @@ describe('billing', () => {
 
   test('a new workspace is on Free and stops generating when its allowance is used', async () => {
     assert.equal((await billing.entitlements(account.workspaceId)).plan, 'free')
-    assert.equal((await billing.entitlements(account.workspaceId)).recordedVoices, false)
-    await billing.recordUsage(account.workspaceId, 'chat', 3 * LESSON_TOKENS)
+    assert.deepEqual((await billing.entitlements(account.workspaceId)).features, [])
+    await billing.recordUsage(account.workspaceId, 'chat', 5 * LESSON_TOKENS)
     assert.equal((await billing.entitlements(account.workspaceId)).canGenerate, false)
   })
 
@@ -53,7 +53,7 @@ describe('billing', () => {
     assert.equal(s.plan, 'creator')
     assert.equal(s.discountCode, 'LAUNCH50')
     const e = (await billing.entitlements(account.workspaceId))
-    assert.deepEqual([e.plan, e.recordedVoices, e.tokenAllowance], ['creator', true, 30 * LESSON_TOKENS])
+    assert.deepEqual([e.plan, e.features, e.tokenAllowance], ['creator', ['shareLinks', 'videoExport'], 30 * LESSON_TOKENS])
   })
 
   test('checkout needs a confirmed email and is for owners of free workspaces', async () => {

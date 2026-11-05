@@ -123,7 +123,7 @@ export function BillingDialog({ billing, canManage, emailVerified, onChanged, on
                   </span>
                 </div>
                 <p className="mt-1 text-sm text-dim">
-                  {plan.lessons} lessons a month{plan.recordedVoices && ' · natural voices'}
+                  {plan.features.slice(1).join(' · ')}
                 </p>
                 <Button
                   variant={current ? 'secondary' : 'primary'}

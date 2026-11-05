@@ -12,6 +12,10 @@ import { STAGE, TITLE_Y, type Action, type AnimatedProp, type Beat, type Cue, ty
 export interface Resolved {
   duration: number
   background: string
+  /** Text and label colours, when they differ from the default dark-stage ones (brand.ts). */
+  ink?: { text: string; label: string }
+  /** A logo in the stage's corner (brand.ts). */
+  logo?: string
   /** Placed elements with their starting values (everything starts hidden). */
   elements: SceneElement[]
   keys: Key[]

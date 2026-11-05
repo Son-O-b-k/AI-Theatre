@@ -129,11 +129,15 @@ export async function recordUsage(db: Db, workspaceId: string, kind: string, tok
   await db.run('INSERT INTO usage (workspace_id, kind, tokens, created_at) VALUES (?, ?, ?, ?)', workspaceId, kind, Math.round(tokens), now())
 }
 
+/** Usage on a workspace's own AI provider: recorded, but not counted against the allowance. */
+export const OWN_KEY_USAGE = 'own-key'
+
 export async function tokensUsedSince(db: Db, workspaceId: string, since: string): Promise<number> {
   const row = await db.get<{ total: number | string }>(
-    'SELECT COALESCE(SUM(tokens), 0) AS total FROM usage WHERE workspace_id = ? AND created_at >= ?',
+    'SELECT COALESCE(SUM(tokens), 0) AS total FROM usage WHERE workspace_id = ? AND created_at >= ? AND kind <> ?',
     workspaceId,
     since,
+    OWN_KEY_USAGE,
   )
   return Number(row?.total ?? 0) // Postgres returns sums as text (bigint)
 }

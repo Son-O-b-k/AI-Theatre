@@ -22,19 +22,37 @@ import { ANIMATED_PROPS, STAGE, type ElementOf, type SceneElement, type Visual }
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 
-const DEFS = `
-<defs>
-  <filter id="shadow" x="-30%" y="-30%" width="160%" height="170%">
-    <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#000" flood-opacity="0.45"/>
-  </filter>
-  <radialGradient id="vignette" cx="50%" cy="45%" r="70%">
-    <stop offset="0" stop-color="#fff" stop-opacity="0.07"/>
-    <stop offset="1" stop-color="#fff" stop-opacity="0"/>
-  </radialGradient>
-  <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
-    <circle cx="16" cy="16" r="1.2" fill="#fff" fill-opacity="0.06"/>
-  </pattern>
-</defs>`
+type Tree = [tag: keyof SVGElementTagNameMap, attributes: Record<string, string | number>, children?: Tree[]]
+
+/**
+ * Shadow, vignette and dot grid. Built node by node rather than parsed from markup, so the
+ * case-sensitive SVG names survive on any DOM (video export draws on a server-side one).
+ */
+const DEFS: Tree = [
+  'defs',
+  {},
+  [
+    ['filter', { id: 'shadow', x: '-30%', y: '-30%', width: '160%', height: '170%' }, [
+      ['feDropShadow', { dx: 0, dy: 8, stdDeviation: 10, 'flood-color': '#000', 'flood-opacity': 0.45 }],
+    ]],
+    ['radialGradient', { id: 'vignette', cx: '50%', cy: '45%', r: '70%' }, [
+      ['stop', { offset: 0, 'stop-color': '#fff', 'stop-opacity': 0.07 }],
+      ['stop', { offset: 1, 'stop-color': '#fff', 'stop-opacity': 0 }],
+    ]],
+    ['pattern', { id: 'grid', width: 32, height: 32, patternUnits: 'userSpaceOnUse' }, [
+      ['circle', { cx: 16, cy: 16, r: 1.2, fill: '#fff', 'fill-opacity': 0.06 }],
+    ]],
+  ],
+]
+
+function tree([tag, attributes, children = []]: Tree): SVGElement {
+  const node = create(tag, attributes)
+  node.append(...children.map(tree))
+  return node
+}
+
+type Ink = NonNullable<Resolved['ink']>
+const DEFAULT_INK: Ink = { text: THEME.text, label: THEME.label }
 
 interface StageNode {
   el: SceneElement
@@ -56,20 +74,25 @@ export class SvgStage {
   private readonly nodes = new Map<string, StageNode>()
   private readonly placements = new Map<string, Placed>()
   private readonly linksByEndpoint = new Map<string, StageNode[]>()
+  private readonly logo: SVGImageElement
 
   constructor(container: HTMLElement) {
     this.svg = create('svg', {
+      // Explicit, so the serialised SVG (frame export, video) is a valid standalone file.
+      xmlns: SVG_NS,
       viewBox: `0 0 ${STAGE.width} ${STAGE.height}`,
       preserveAspectRatio: 'xMidYMid meet',
       'font-family': 'Inter, ui-sans-serif, system-ui, sans-serif',
     })
-    this.svg.innerHTML = DEFS
+    this.svg.append(tree(DEFS))
     this.backdrop = create('rect', { width: STAGE.width, height: STAGE.height, fill: THEME.background })
     const vignette = create('rect', { width: STAGE.width, height: STAGE.height, fill: 'url(#vignette)' })
     const grid = create('rect', { width: STAGE.width, height: STAGE.height, fill: 'url(#grid)' })
     this.linkLayer = create('g', {})
     this.layer = create('g', {})
-    this.svg.append(this.backdrop, vignette, grid, this.linkLayer, this.layer)
+    // A brand logo, top right, above the drawing (src/scene/brand.ts).
+    this.logo = create('image', { x: STAGE.width - 236, y: 24, width: 200, height: 48, preserveAspectRatio: 'xMaxYMin meet', visibility: 'hidden' })
+    this.svg.append(this.backdrop, vignette, grid, this.linkLayer, this.layer, this.logo)
     container.append(this.svg)
   }
 
@@ -77,6 +100,9 @@ export class SvgStage {
   render(scene: Resolved): void {
     this.backdrop.setAttribute('fill', scene.background)
     this.svg.style.setProperty('--stage-bg', scene.background)
+    const ink = scene.ink ?? DEFAULT_INK
+    if (scene.logo) this.logo.setAttribute('href', scene.logo)
+    this.logo.setAttribute('visibility', scene.logo ? 'visible' : 'hidden')
 
     const ids = new Set(scene.elements.map((el) => el.id))
     for (const [id, node] of this.nodes) {
@@ -85,11 +111,11 @@ export class SvgStage {
 
     this.linksByEndpoint.clear()
     for (const el of scene.elements) {
-      const signature = structure(el)
+      const signature = structure(el, ink)
       let node = this.nodes.get(el.id)
       if (node?.signature !== signature) {
         node?.root.remove()
-        node = build(el, signature)
+        node = build(el, signature, ink)
         this.nodes.set(el.id, node)
       }
       if (el.kind === 'link') {
@@ -149,7 +175,7 @@ export class SvgStage {
 
 // ── Building nodes ────────────────────────────────────────────────────────────
 
-function build(el: SceneElement, signature: string): StageNode {
+function build(el: SceneElement, signature: string, ink: Ink): StageNode {
   const root = create('g', {})
   const node: StageNode = { el, signature, root }
 
@@ -221,14 +247,14 @@ function build(el: SceneElement, signature: string): StageNode {
       root.append(node.stroke)
       if (el.arrow) node.head = arrowHead(root, { x: 0, y: 0 }, { x: 1, y: 0 })
       if (el.label) {
-        node.label = labelText(el.label, 0, false, LINK_LABEL_SIZE)
+        node.label = labelText(el.label, 0, false, ink, LINK_LABEL_SIZE)
         root.append(node.label)
       }
       break
   }
 
   if (hasShapeLabel(el)) {
-    node.label = labelText(el.label!, labelOffset(el), labelPosition(el) === 'inside')
+    node.label = labelText(el.label!, labelOffset(el), labelPosition(el) === 'inside', ink)
     root.append(node.label)
   }
   return node
@@ -281,14 +307,14 @@ function icon(name: string, { size, y }: { size: number; y: number }): SVGGEleme
   return group
 }
 
-function labelText(text: string, y: number, inside: boolean, size = LABEL_SIZE): SVGTextElement {
+function labelText(text: string, y: number, inside: boolean, ink: Ink, size = LABEL_SIZE): SVGTextElement {
   const label = create('text', {
     y,
     'font-size': size,
     'font-weight': 600,
     'text-anchor': 'middle',
     'dominant-baseline': 'central',
-    fill: inside ? THEME.text : THEME.label,
+    fill: inside ? ink.text : ink.label,
   })
   // A halo in the background colour keeps outside labels readable over lines.
   if (!inside) label.setAttribute('style', 'paint-order: stroke; stroke: var(--stage-bg); stroke-width: 6px; stroke-linejoin: round')
@@ -296,9 +322,9 @@ function labelText(text: string, y: number, inside: boolean, size = LABEL_SIZE):
   return label
 }
 
-/** Everything about an element except its animated values. */
-function structure(el: SceneElement): string {
-  const fixed: Record<string, unknown> = { ...el }
+/** Everything about an element except its animated values (and the stage's ink, which labels use). */
+function structure(el: SceneElement, ink: Ink): string {
+  const fixed: Record<string, unknown> = { ...el, ink }
   for (const prop of ANIMATED_PROPS) delete fixed[prop]
   return JSON.stringify(fixed)
 }

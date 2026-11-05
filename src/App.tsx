@@ -6,6 +6,7 @@ import {
   PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
+  Share2,
   Smartphone,
   X,
 } from 'lucide-react'
@@ -13,7 +14,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AccountInfo } from '../shared/protocol'
 import { api, ApiError } from './api'
 import { BillingDialog } from './components/BillingDialog'
-import { TeamDialog } from './components/TeamDialog'
+import { ExportDialog } from './components/ExportDialog'
+import { ShareDialog } from './components/ShareDialog'
+import { WorkspaceDialog } from './components/workspace/WorkspaceDialog'
 import { Home } from './components/Home'
 import { chapterTitle, LessonPanel, LIVE } from './components/LessonPanel'
 import { LessonPlayer, type PlayerHandle } from './components/LessonPlayer'
@@ -31,6 +34,7 @@ import { BROWSER_VOICE, unrecorded } from './narration'
 import { editNarration, type Output, type Project } from './project'
 import { emptyScene } from './scene/scene'
 import { SCENE_VERSION } from './scene/schema'
+import { DEFAULT_LANGUAGE } from '../shared/languages'
 
 /** While editing, the stage sits between Studio's outline (left), details panel (right) and timeline (bottom). */
 const STUDIO_CLEARANCE = 'pl-[190px] pr-[250px] pb-[40vh]'
@@ -63,6 +67,9 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
   const [notice, setNotice] = useState<string | null>(initialNotice)
   const [billingOpen, setBillingOpen] = useState(false)
   const [teamOpen, setTeamOpen] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
+  const [language, setLanguage] = useState<string>(DEFAULT_LANGUAGE)
+  const [exporting, setExporting] = useState<'mp4' | 'scorm' | null>(null)
   const onError = useCallback((e: unknown) => {
     setError(e instanceof Error ? e.message : String(e))
     setLimitReached(e instanceof ApiError && e.status === 402)
@@ -70,11 +77,9 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
 
   const projects = useProjects(onError)
   const layout = useLayout()
-  const { providers, target, setTarget } = useProviders(onError)
+  const { providers, target, setTarget, refresh: refreshProviders } = useProviders(onError)
   const { voices, voice, setVoice } = useVoice()
   const { billing } = account
-  // Free plans narrate with the browser's voice; recorded voices come with a paid plan.
-  const narrationVoice = billing.recordedVoices ? voice : BROWSER_VOICE
   const { project } = projects
   const outputs = project?.outputs ?? []
 
@@ -97,7 +102,7 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
 
   const generator = useGenerator({
     target,
-    voice: narrationVoice,
+    voice,
     project,
     output,
     create: projects.create,
@@ -132,7 +137,7 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
     const refining = runMode === 'refine' ? output : null
     layout.setEditing(false)
     setSelected(LIVE)
-    await generator.run(runMode, text)
+    await generator.run(runMode, text, runMode === 'teach' ? language : (project?.language ?? DEFAULT_LANGUAGE))
     if (refining) selectIfWatchingLive(refining.id)
   }
 
@@ -145,7 +150,7 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
 
   /** A lesson has one voice: choosing one records every chapter that is not narrated with it yet. */
   const changeVoice = (next: string) => {
-    if (next !== BROWSER_VOICE && !billing.recordedVoices) {
+    if (voices.find((v) => v.id === next)?.premium && !billing.features.includes('premiumVoices')) {
       setBillingOpen(true)
       return
     }
@@ -309,6 +314,11 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
                   />
                   <p className="truncate text-[13px] text-dim">{subtitle}</p>
                 </div>
+                {!layout.theatre && (
+                  <Button variant="secondary" size="sm" onClick={() => setShareOpen(true)} disabled={outputs.length === 0}>
+                    <Share2 className="size-3.5" /> Share
+                  </Button>
+                )}
                 <Button
                   variant={layout.theatre ? 'active' : 'ghost'}
                   size={layout.theatre ? 'sm' : 'icon'}
@@ -347,11 +357,13 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
               onEnded={playNext}
               onChange={updateOutput}
               onExportProject={() => exportProject(project.id)}
+              onExport={setExporting}
               onError={onError}
               editing={layout.editing}
+              brand={account.brand}
               onEditKeyframes={() => layout.setEditing(true)}
               voices={voices}
-              voicesLocked={!billing.recordedVoices}
+              premiumLocked={!billing.features.includes('premiumVoices')}
               onVoiceChange={changeVoice}
               recording={generator.busy}
               // Stacked layout scrolls, so the player needs an explicit height: a full-width 16:9 stage plus controls.
@@ -383,6 +395,7 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
                 busy={generator.busy}
                 status={generator.status || 'Generating…'}
                 warnings={generator.warnings}
+                language={{ value: language, onChange: setLanguage, locked: !billing.features.includes('premiumVoices') }}
                 onSubmit={run}
                 onStop={generator.stop}
               />
@@ -401,6 +414,7 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
             busy={generator.busy}
             status={generator.status}
             warnings={generator.warnings}
+            language={{ value: language, onChange: setLanguage, locked: !billing.features.includes('premiumVoices') }}
             onRun={run}
             onStop={generator.stop}
             onOpen={openProject}
@@ -448,7 +462,41 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
           onClose={() => setBillingOpen(false)}
         />
       )}
-      {teamOpen && <TeamDialog isOwner={account.workspace.role === 'owner'} onClose={() => setTeamOpen(false)} />}
+      {exporting && project && (
+        <ExportDialog
+          projectId={project.id}
+          kind={exporting}
+          allowed={billing.features.includes(exporting === 'mp4' ? 'videoExport' : 'scorm')}
+          onSeePlans={() => {
+            setExporting(null)
+            setBillingOpen(true)
+          }}
+          onClose={() => setExporting(null)}
+        />
+      )}
+      {shareOpen && project && (
+        <ShareDialog
+          projectId={project.id}
+          allowed={billing.features.includes('shareLinks')}
+          onSeePlans={() => {
+            setShareOpen(false)
+            setBillingOpen(true)
+          }}
+          onClose={() => setShareOpen(false)}
+        />
+      )}
+      {teamOpen && (
+        <WorkspaceDialog
+          account={account}
+          onChanged={onAccountChange}
+          onProvidersChanged={refreshProviders}
+          onSeePlans={() => {
+            setTeamOpen(false)
+            setBillingOpen(true)
+          }}
+          onClose={() => setTeamOpen(false)}
+        />
+      )}
     </div>
   )
 }

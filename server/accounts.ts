@@ -65,9 +65,18 @@ export async function signUp(db: Db, email: string, password: string): Promise<A
 }
 
 export async function signIn(db: Db, email: string, password: string): Promise<Account> {
+  await refuseIfSsoOnly(db, email)
   const user = await db.get<UserRow>('SELECT * FROM users WHERE email = ?', normalizeEmail(email))
   if (!user || !(await verifyPassword(password, user.password_hash))) throw new AccountError('Wrong email or password.')
   return account(db, user)
+}
+
+/** A domain whose organisation enforces single sign-on cannot use passwords (server/sso.ts). */
+export async function refuseIfSsoOnly(db: Db, email: string): Promise<void> {
+  const domain = normalizeEmail(email).split('@')[1]
+  if (await db.get('SELECT 1 FROM sso_connections WHERE domain = ? AND enforced = 1', domain ?? '')) {
+    throw new AccountError('Your organisation signs in with single sign-on. Use "Continue with single sign-on".')
+  }
 }
 
 /** The account in its preferred workspace, or its first one if it is no longer a member there. */

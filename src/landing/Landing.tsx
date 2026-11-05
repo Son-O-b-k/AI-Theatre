@@ -59,8 +59,15 @@ const FAQ = [
     'Is what it teaches correct?',
     'Lessons are written by the AI model you choose, and good models are right about most topics, but not all. Watch a lesson before you teach with it. Every line can be edited.',
   ],
-  ['Which languages does it speak?', 'English today. More voices and languages are planned for paid plans.'],
-  ['Who owns the lessons I make?', 'You do. You can export any lesson as a project file at any time.'],
+  [
+    'Which languages does it speak?',
+    'Every plan narrates in English with natural voices. Pro and Teams write and narrate lessons in 15 more languages, including French, Spanish, Arabic, Swahili and Chinese.',
+  ],
+  [
+    'How do I share or reuse a lesson?',
+    'Share a link or embed it on your website (Creator and up), download it as an MP4 video with captions, or, on Teams, export it as a SCORM course for your learning system.',
+  ],
+  ['Who owns the lessons I make?', 'You do. You can export any lesson, as a video or as a project file, at any time.'],
   ['Can I use my own AI model?', 'Yes. It works with OpenAI-compatible APIs, Anthropic, and Ollama, including models running on your own servers.'],
 ] as const
 
@@ -224,13 +231,10 @@ function PlanCard({ plan }: { plan: (typeof CARDS)[number] }) {
         {plan.price && plan.price.month > 0 && <span className="text-sm text-dim">/month</span>}
       </p>
       <ul className="mt-6 flex-1 space-y-2.5 text-sm">
-        {plan.features.map(({ text, soon }) => (
+        {plan.features.map((text) => (
           <li key={text} className="flex gap-2.5">
             <Check className="mt-0.5 size-4 shrink-0 text-accent" />
-            <span>
-              {text}
-              {soon && <span className="ml-2 rounded bg-tint px-1.5 py-0.5 text-[11px] font-medium text-faint">Soon</span>}
-            </span>
+            <span>{text}</span>
           </li>
         ))}
       </ul>

@@ -7,6 +7,7 @@ import {
   createVerificationLink,
   endSession,
   hasUsers,
+  refuseIfSsoOnly,
   resetPassword,
   signIn,
   signUp,
@@ -15,7 +16,9 @@ import {
   workspacesOf,
   type Account,
 } from '../accounts'
+import { effectiveBrand } from '../brand'
 import { templates } from '../email'
+import { completeLogin, ssoFor, startLogin } from '../sso'
 import { adoptLegacyProjects } from '../store'
 import { requireAccount, SESSION_COOKIE, siteUrl, type AppEnv, type Deps } from './context'
 
@@ -47,6 +50,7 @@ export function authRoutes({ db, billing, mailer }: Deps) {
 
   app.post('/signup', async (c) => {
     const { email, password } = Credentials.parse(await c.req.json())
+    await refuseIfSsoOnly(db, email)
     const first = !(await hasUsers(db))
     const account = await signUp(db, email, password)
     if (first) await adoptLegacyProjects(account.workspaceId)
@@ -74,6 +78,7 @@ export function authRoutes({ db, billing, mailer }: Deps) {
       workspace: { id: workspaceId, role },
       workspaces: await workspacesOf(db, userId),
       billing: await billing.summary(workspaceId),
+      brand: await effectiveBrand(db, billing, workspaceId),
     })
   })
 
@@ -105,6 +110,27 @@ export function authRoutes({ db, billing, mailer }: Deps) {
   app.post('/password/reset', async (c) => {
     const { token, password } = Token.extend({ password: Password }).parse(await c.req.json())
     return startSession(c, await resetPassword(db, token, password))
+  })
+
+  // Single sign-on: the sign-in page asks whether an address uses it, then sends people here.
+  app.get('/sso', async (c) => c.json(await ssoFor(db, z.string().email().parse(c.req.query('email')))))
+
+  app.get('/sso/start', async (c) => {
+    const email = z.string().email().parse(c.req.query('email'))
+    return c.redirect(await startLogin(db, email, `${siteUrl(c)}/api/auth/sso/callback`))
+  })
+
+  app.get('/sso/callback', async (c) => {
+    const { state, code, error_description: refused } = c.req.query()
+    try {
+      if (refused || !state || !code) throw new Error(refused ?? 'The sign-in was cancelled.')
+      const { userId, workspaceId } = await completeLogin(db, state, code)
+      const { token, expires } = await createSession(db, userId, workspaceId)
+      setCookie(c, SESSION_COOKIE, token, { httpOnly: true, sameSite: 'Lax', secure: process.env.NODE_ENV === 'production', path: '/', expires })
+      return c.redirect('/app')
+    } catch (error) {
+      return c.redirect(`/app?sso_error=${encodeURIComponent(error instanceof Error ? error.message : String(error))}`)
+    }
   })
 
   return app
