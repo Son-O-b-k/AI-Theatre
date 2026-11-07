@@ -1,5 +1,6 @@
-// resvg needs TrueType fonts; the Inter package ships WOFF. WOFF is TrueType with each table
+// resvg needs TrueType fonts; the font packages ship WOFF. WOFF is TrueType with each table
 // zlib-compressed, so unpacking it is a few lines. Converted files are cached in data/fonts.
+// The stage uses Inter, and Caveat for handwritten notes.
 
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
@@ -7,23 +8,24 @@ import { createRequire } from 'node:module'
 import { dirname, join, resolve } from 'node:path'
 import { inflateSync } from 'node:zlib'
 
-const WEIGHTS = [400, 500, 600, 700]
+const FONTS = [
+  ...[400, 500, 600, 700].map((weight) => ({ name: `inter-${weight}`, woff: `@fontsource/inter/files/inter-latin-${weight}-normal.woff` })),
+  ...[500, 700].map((weight) => ({ name: `caveat-${weight}`, woff: `@fontsource/caveat/files/caveat-latin-${weight}-normal.woff` })),
+]
 
-/** Paths of Inter as TrueType, converting from the npm package the first time. */
-export async function interFonts(): Promise<string[]> {
+/** Paths of the stage's fonts as TrueType, converting from the npm packages the first time. */
+export async function stageFonts(): Promise<string[]> {
   const dir = join(resolve(process.env.DATA_DIR ?? 'data'), 'fonts')
-  const files = await Promise.all(
-    WEIGHTS.map(async (weight) => {
-      const out = join(dir, `inter-${weight}.ttf`)
+  return Promise.all(
+    FONTS.map(async ({ name, woff }) => {
+      const out = join(dir, `${name}.ttf`)
       if (!existsSync(out)) {
-        const woff = createRequire(import.meta.url).resolve(`@fontsource/inter/files/inter-latin-${weight}-normal.woff`)
         await mkdir(dirname(out), { recursive: true })
-        await writeFile(out, woffToTtf(await readFile(woff)))
+        await writeFile(out, woffToTtf(await readFile(createRequire(import.meta.url).resolve(woff))))
       }
       return out
     }),
   )
-  return files
 }
 
 export function woffToTtf(woff: Buffer): Buffer {

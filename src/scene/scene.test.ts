@@ -3,7 +3,9 @@
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
-import { SCENE_SYSTEM } from '../ai/prompts'
+import { LESSON_RULES } from '../../content/lesson-rules'
+import { planLesson } from '../ai/generate'
+import { PLAN_SYSTEM, planMessages, SCENE_SYSTEM } from '../ai/prompts'
 import { BROWSER_VOICE, unrecorded, withNarration } from '../narration'
 import { editNarration, newOutput } from '../project'
 import { checkScene } from './check'
@@ -29,6 +31,35 @@ const geometryProblems = (scene: Scene) => checkScene(compile(scene)).filter((is
 
 const CASES: Record<string, object[]> = {
   'the prompt example': fromJsonLines(SCENE_SYSTEM.split('EXAMPLE\n')[1].split('\n\n')[0]),
+  'the prompt example with numbers': fromJsonLines(SCENE_SYSTEM.split('EXAMPLE WITH NUMBERS\n')[1].split('\n\n')[0]),
+
+  'a drawing, a chart and a counter side by side': [
+    { op: 'board', title: 'Growth', layout: 'row' },
+    { op: 'el', id: 'tree', kind: 'illustration', art: 'tree', label: 'A tree' },
+    { op: 'el', id: 'rings', kind: 'chart', bars: [['Year 1', 2], ['Year 10', 18], ['Year 50', 90]], unit: 'cm', label: 'trunk width' },
+    { op: 'el', id: 'age', kind: 'counter', from: 0, to: 4800, suffix: ' years', label: 'oldest known' },
+    { op: 'el', id: 'note', kind: 'text', text: 'Each ring is one year of growth' },
+    { op: 'beat', say: 'A tree grows a ring every year.', do: [{ show: ['tree', 'rings', 'age'] }] },
+  ],
+
+  'a timeline above a table': [
+    { op: 'board', title: 'The web', layout: 'column' },
+    { op: 'el', id: 'tl', kind: 'timeline', points: [{ at: '1969', label: 'ARPANET sends its first message' }, { at: '1989', label: 'The web is proposed' }, { at: '1998', label: 'Google' }, { at: '2007', label: 'iPhone' }, { at: '2020', label: 'Everyone works from home' }] },
+    { op: 'el', id: 'tb', kind: 'table', columns: ['', 'Speed', 'Users'], rows: [['1995', '56 kbit/s', '16 million'], ['2024', '100 Mbit/s', '5.4 billion']] },
+    { op: 'beat', say: 'Fifty years of growth.', do: [{ show: ['tl', 'tb'] }] },
+  ],
+
+  'two groups compare before and after, linked': [
+    { op: 'board', title: 'The printing press', layout: 'flow' },
+    { op: 'el', id: 'before', kind: 'group', label: 'Before 1450', contains: ['scribe', 'few'] },
+    { op: 'el', id: 'scribe', kind: 'icon', icon: 'user', label: 'Scribes' },
+    { op: 'el', id: 'few', kind: 'counter', to: 30000, label: 'books' },
+    { op: 'el', id: 'after', kind: 'group', label: 'By 1500', contains: ['press', 'many'] },
+    { op: 'el', id: 'press', kind: 'illustration', art: 'factory', label: 'Print shops' },
+    { op: 'el', id: 'many', kind: 'counter', from: 30000, to: 20000000, label: 'books' },
+    { op: 'link', id: 'then', from: 'few', to: 'press', label: '50 years' },
+    { op: 'beat', say: 'Then came the press.', do: [{ show: ['before', 'after', 'then'] }] },
+  ],
 
   // The chapter that rendered badly: six tokens in a row, links skipping neighbours, a heading-like note.
   'attention over a row of tokens': [
@@ -223,6 +254,76 @@ describe('storyboard', () => {
     const edited = fromTheatreState(scene, toTheatreState(compile(scene)))
     assert.equal(compile(edited).keys.length > 0, true)
     assert.deepEqual(compile(edited).elements, compile(scene).elements)
+  })
+})
+
+describe('richer elements', () => {
+  test('a group appears with the shapes inside it, not before', () => {
+    const { scene } = build(CASES['two groups compare before and after, linked'].map((line) =>
+      'say' in line ? { op: 'beat', say: 'First the scribes.', do: [{ show: 'before' }] } : line,
+    ).concat([{ op: 'beat', say: 'Then the press.', do: [{ show: 'after' }] }]))
+    const resolved = compile(scene)
+    const shownAt = (id: string) => resolved.keys.find((key) => key.el === id && key.prop === 'opacity' && key.v === 1)?.t ?? Infinity
+    assert.ok(shownAt('press') > shownAt('scribe'), 'members of the second group wait for it')
+    assert.equal(Math.round(shownAt('press')), Math.round(shownAt('after')))
+  })
+
+  test('what models write instead is understood: data for bars, a missing drawing becomes an icon or a box', () => {
+    const { scene, warnings } = build([
+      { op: 'board' },
+      { op: 'el', id: 'c', kind: 'graph', data: [{ label: 'A', value: 1 }], label: 'Chart' },
+      { op: 'el', id: 'i', kind: 'illustration', art: 'rocket', label: 'Rocket' },
+      { op: 'el', id: 'j', kind: 'drawing', art: 'database', label: 'Data' },
+      { op: 'el', id: 'k', kind: 'image', art: 'unicorn', label: 'Unicorn' },
+      { op: 'beat', say: 'Look.', do: [] },
+    ])
+    assert.deepEqual(warnings, [])
+    assert.deepEqual(scene.elements.map((el) => el.kind), ['chart', 'illustration', 'icon', 'box'])
+  })
+
+  test('elements that draw themselves in animate draw from 0 to 1', () => {
+    const { scene } = build(CASES['a drawing, a chart and a counter side by side'])
+    const draws = compile(scene).keys.filter((key) => key.prop === 'draw')
+    for (const id of ['tree', 'rings', 'age']) {
+      assert.deepEqual(draws.filter((key) => key.el === id).map((key) => key.v), [0, 1], id)
+    }
+  })
+})
+
+describe('lesson rules', () => {
+  test('a full board continues on a new one with the same title', () => {
+    const { scene } = build([
+      { op: 'board', title: 'Many parts', layout: 'grid' },
+      ...boxes('p', Array.from({ length: LESSON_RULES.shapesPerBoard.max + 3 }, (_, i) => `Part ${i + 1}`)),
+      { op: 'beat', say: 'So many parts.', do: [] },
+    ])
+    assert.deepEqual(scene.boards, [{ title: 'Many parts', layout: 'grid' }, { title: 'Many parts', layout: 'grid' }])
+    assert.equal(scene.elements.filter((el) => el.boards.includes(0)).length, LESSON_RULES.shapesPerBoard.max)
+  })
+
+  test(`a chapter keeps at most ${LESSON_RULES.beats.max} beats`, () => {
+    const beats = Array.from({ length: LESSON_RULES.beats.max + 5 }, (_, i) => ({ op: 'beat', say: `Line ${i}.`, do: [] }))
+    const { scene, warnings } = build([{ op: 'board' }, { op: 'el', id: 'a', kind: 'box', label: 'A' }, ...beats])
+    assert.equal(scene.beats.length, LESSON_RULES.beats.max)
+    assert.equal(warnings.length, 5)
+  })
+
+  test(`a lesson outline stops at ${LESSON_RULES.chapters.max} chapters, however many are asked for`, async () => {
+    let written = 0
+    async function* model() {
+      for (let i = 1; i <= 500; i++) {
+        written = i
+        yield `{"op":"chapter","title":"Chapter ${i}","goal":"Learn part ${i}"}\n`
+      }
+    }
+    const outline = await planLesson(() => model(), planMessages('everything, in 500 chapters'), new AbortController().signal)
+    assert.equal(outline.length, LESSON_RULES.chapters.max)
+    assert.ok(written <= LESSON_RULES.chapters.max + 1, 'stops reading the model once the outline is full')
+  })
+
+  test('the AI is told the rules', () => {
+    assert.match(PLAN_SYSTEM, new RegExp(`up to ${LESSON_RULES.chapters.max} chapters`))
+    assert.match(SCENE_SYSTEM, new RegExp(`At most ${LESSON_RULES.shapesPerBoard.usual} shapes per board`))
   })
 })
 

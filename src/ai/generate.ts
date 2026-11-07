@@ -1,4 +1,5 @@
 import { jsonrepair } from 'jsonrepair'
+import { LESSON_RULES } from '../../content/lesson-rules'
 import { z } from 'zod'
 import type { ChatMessage } from '../../shared/protocol'
 import { applyOp, emptyScene, finalizeScene } from '../scene/scene'
@@ -77,11 +78,13 @@ export async function generateScene(
 
 const ChapterSchema = z.object({ op: z.literal('chapter'), title: z.string().min(1), goal: z.string().min(1) })
 
+/** The chapter outline, cut at LESSON_RULES.chapters.max however many the model writes. */
 export async function planLesson(complete: Complete, messages: ChatMessage[], signal: AbortSignal): Promise<Chapter[]> {
   const chapters: Chapter[] = []
   for await (const line of jsonLines(complete(PLAN_SYSTEM, messages, signal))) {
     const parsed = line.ok ? ChapterSchema.safeParse(line.value) : null
     if (parsed?.success) chapters.push({ title: parsed.data.title, goal: parsed.data.goal })
+    if (chapters.length === LESSON_RULES.chapters.max) break // stops reading, and so stops the model
   }
   if (chapters.length === 0) throw new Error('The model did not produce a lesson outline.')
   return chapters

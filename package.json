@@ -3,20 +3,26 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "predev": "npm run check:content",
     "dev": "concurrently -k -n api,web -c blue,green \"npm:dev:api\" \"npm:dev:web\"",
     "dev:api": "tsx watch server/index.ts",
     "dev:web": "vite",
+    "prebuild": "npm run check:content",
     "build": "tsc --noEmit && vite build && vite build --config vite.player.config.ts",
     "start": "NODE_ENV=production tsx server/index.ts",
     "typecheck": "tsc --noEmit",
+    "check:content": "tsx scripts/content.ts",
+    "preview:content": "npm run check:content && tsx scripts/preview-content.ts",
     "admin": "tsx server/admin.ts",
-    "test": "tsx --test src/scene/scene.test.ts server/billing/billing.test.ts server/accounts.test.ts server/lessons/jobs.test.ts server/features.test.ts"
+    "pretest": "npm run check:content",
+    "test": "tsx --test scripts/content.test.ts src/scene/scene.test.ts server/billing/billing.test.ts server/accounts.test.ts server/lessons/jobs.test.ts server/features.test.ts"
   },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "1.1.0",
     "@fontsource-variable/fraunces": "5.3.0",
     "@fontsource-variable/instrument-sans": "5.3.0",
     "@fontsource-variable/inter": "5.3.0",
+    "@fontsource/caveat": "5.3.0",
     "@fontsource/inter": "5.3.0",
     "@hono/node-server": "2.1.6",
     "@huggingface/transformers": "3.8.1",
@@ -35,6 +41,8 @@
     "pg": "8.23.1",
     "react": "18.3.1",
     "react-dom": "18.3.1",
+    "roughjs": "4.6.6",
+    "svg-path-properties": "2.2.0",
     "tailwindcss": "4.3.3",
     "zod": "4.6.7"
   },

@@ -15,7 +15,7 @@ import type { Scene } from '../../src/scene/schema'
 import type { TheatreState } from '../../src/scene/theatre'
 import { newId } from '../db'
 import { clipFile } from '../speech'
-import { interFonts } from './fonts'
+import { stageFonts } from './fonts'
 import { chapterFrames, FPS } from './frames'
 import type { SegmentJob } from './video-worker'
 
@@ -102,7 +102,7 @@ export async function exportVideo(options: VideoOptions): Promise<void> {
     // Each worker draws a contiguous range, so segments can be joined in order.
     const workers = Math.max(1, Math.min(availableParallelism() - 2, Math.ceil(totalFrames / (FPS * 10))))
     const size = Math.ceil(totalFrames / workers)
-    const fontFiles = await interFonts()
+    const fontFiles = await stageFonts()
     let rendered = 0
     const segments = Array.from({ length: workers }, (_, i) => join(work, `segment-${i}.mp4`))
     await Promise.all(

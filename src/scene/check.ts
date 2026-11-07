@@ -19,7 +19,7 @@ export function checkScene(scene: Resolved): string[] {
   const issues = new Map<string, string>()
   const report = (id: string, message: string) => issues.has(id) || issues.set(id, message) // keep the first occurrence
   const seen = new Set<string>()
-  const solid = scene.elements.filter((el) => el.kind !== 'link' && el.kind !== 'dot')
+  const solid = scene.elements.filter((el) => el.kind !== 'link' && el.kind !== 'dot' && el.kind !== 'group')
 
   for (let t = 0; t <= scene.duration; t += STEP) {
     const visible = scene.elements.filter((el) => value(el, 'opacity', t) > VISIBLE)

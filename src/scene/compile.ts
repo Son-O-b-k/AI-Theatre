@@ -7,7 +7,7 @@
 import { linkGeometry, type Placed } from './geometry'
 import { layoutBoard, type Placement } from './layout'
 import { THEME, toHex } from './palette'
-import { STAGE, TITLE_Y, type Action, type AnimatedProp, type Beat, type Cue, type Key, type Scene, type SceneElement, type Visual } from './schema'
+import { STAGE, TITLE_Y, type Action, type AnimatedProp, type Beat, type Cue, type ElementKind, type Key, type Scene, type SceneElement, type Visual } from './schema'
 
 export interface Resolved {
   duration: number
@@ -28,7 +28,9 @@ const BOARD_CHANGE = 0.8
 const BEAT_GAP = 0.5
 const MIN_BEAT = 2.5
 const DIMMED = 0.2
-const DURATION = { fade: 0.6, pop: 0.6, draw: 0.9, hide: 0.5, highlight: 0.4, pulse: 0.8, focus: 0.4, travel: 1.6, move: 0.8 }
+const DURATION = { fade: 0.6, pop: 0.6, hide: 0.5, highlight: 0.4, pulse: 0.8, focus: 0.4, travel: 1.6, move: 0.8 }
+/** Elements that draw themselves in (`draw` 0..1), and how long that takes. */
+const DRAW_TIME: Partial<Record<ElementKind, number>> = { link: 0.9, illustration: 2.4, chart: 1.4, counter: 1.6, timeline: 1.6, table: 1.2 }
 const TRAVEL_SAMPLES = 12
 
 export const titleId = (board: number) => `title-${board + 1}`
@@ -127,9 +129,9 @@ export function compile(scene: Scene): Resolved {
     const current = state.get(id)
     if (!el || !current || current.opacity >= 1) return
     const effect = fx ?? defaultEntrance(el)
-    if (effect === 'draw' && el.kind === 'link' && !el.dashed) {
+    if (effect === 'draw' && drawsIn(el)) {
       key(id, 'draw', t, 0)
-      key(id, 'draw', t + DURATION.draw, 1)
+      key(id, 'draw', t + DRAW_TIME[el.kind]!, 1)
       tween(id, 'opacity', t, t + 0.15, 1)
       return
     }
@@ -224,6 +226,7 @@ function place(scene: Scene): { elements: SceneElement[]; positions: Map<string,
         size: 34,
         weight: 700,
         width: 1100,
+        font: 'sans',
         boards: [index],
         color: THEME.text,
         ...hidden({ x: STAGE.width / 2, y: TITLE_Y, scale: 1, curve: 0 }),
@@ -244,9 +247,10 @@ const hidden = ({ x, y, scale, curve }: Placement) => ({ x, y, scale, curve, rot
  * Beats with an extra "show" for anything the AI put on a board but never showed there: shapes
  * appear at the board's first beat, links once both ends are visible. Boards without beats get a
  * silent one. A show for something already visible (carried over from the previous board) does nothing.
+ * Actions on a group apply to its members too.
  */
 function withEveryElementShown(scene: Scene): Beat[] {
-  const beats: Beat[] = scene.beats.map((beat) => ({ ...beat, actions: [...beat.actions] }))
+  const beats: Beat[] = scene.beats.map((beat) => ({ ...beat, actions: beat.actions.map((action) => withGroupMembers(scene, action)) }))
   scene.boards.forEach((_, board) => {
     if (scene.elements.some((el) => el.boards.includes(board)) && !beats.some((beat) => beat.board === board)) {
       const at = beats.findIndex((beat) => beat.board > board)
@@ -279,14 +283,26 @@ function withEveryElementShown(scene: Scene): Beat[] {
   return beats
 }
 
+const drawsIn = (el: SceneElement) => (el.kind === 'link' ? !el.dashed : el.kind in DRAW_TIME)
+
+/** Showing, hiding, focusing or pulsing a group does the same to the shapes inside it. */
+function withGroupMembers(scene: Scene, action: Action): Action {
+  if (action.type !== 'show' && action.type !== 'hide' && action.type !== 'focus' && action.type !== 'pulse') return action
+  const members = (id: string) => {
+    const el = scene.elements.find((candidate) => candidate.id === id)
+    return el?.kind === 'group' ? el.contains : []
+  }
+  return { ...action, ids: [...new Set(action.ids.flatMap((id) => [id, ...members(id)]))] }
+}
+
 function defaultEntrance(el: SceneElement): 'fade' | 'pop' | 'draw' {
-  if (el.kind === 'link') return el.dashed ? 'fade' : 'draw'
-  return el.kind === 'text' || el.kind === 'dot' ? 'fade' : 'pop'
+  if (drawsIn(el)) return 'draw'
+  return el.kind === 'text' || el.kind === 'dot' || el.kind === 'group' || el.kind === 'link' ? 'fade' : 'pop'
 }
 
 function entranceTime(el: SceneElement | undefined, fx?: 'fade' | 'pop' | 'draw'): number {
   if (!el) return 0
-  return (fx ?? defaultEntrance(el)) === 'draw' ? DURATION.draw : DURATION.fade
+  return (fx ?? defaultEntrance(el)) === 'draw' && drawsIn(el) ? DRAW_TIME[el.kind]! : DURATION.fade
 }
 
 const visualOf = ({ x, y, rotation, scale, opacity, draw, color }: SceneElement): Visual => ({ x, y, rotation, scale, opacity, draw, color })

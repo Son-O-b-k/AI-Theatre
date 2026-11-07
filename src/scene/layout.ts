@@ -4,10 +4,14 @@
 //
 // Shapes sit on a uniform grid of cells sized to the largest shape (labels included), which keeps
 // boards tidy and aligned. The arrangement is scaled to fit the safe area. Text notes stack under
-// the diagram. Links are bent around any shape they would otherwise cross.
+// the diagram. Links are bent around any shape they would otherwise cross. A group is arranged on
+// its own first (its members in a small grid, with room for its frame and label) and then takes
+// one cell like any shape.
 
-import { bounds, LINK_LABEL_SIZE, linkGeometry, textWidth, type Placed, type Rect } from './geometry'
+import { bounds, LINK_LABEL_SIZE, linkGeometry, type Placed, type Rect } from './geometry'
 import { SAFE, STAGE, type Board, type Element, type ElementOf, type Layout } from './schema'
+import { textWidth } from './text'
+import { GROUP } from './widgets'
 
 export interface Placement {
   x: number
@@ -38,17 +42,40 @@ interface Cell {
 export function layoutBoard(board: Board, elements: Element[]): Map<string, Placement> {
   const placements = new Map<string, Placement>()
   const region: Rect = { x0: SAFE.x0, x1: SAFE.x1, y0: board.title ? SAFE.y0 : 60, y1: SAFE.y1 }
-  const shapes = elements.filter((el) => el.kind !== 'link' && el.kind !== 'dot' && el.kind !== 'text')
+  const shapes = elements.filter((el) => el.kind !== 'link' && el.kind !== 'dot' && el.kind !== 'text' && el.kind !== 'group')
   const notes = elements.filter((el): el is ElementOf<'text'> => el.kind === 'text')
   const links = elements.filter((el): el is ElementOf<'link'> => el.kind === 'link')
 
+  // Each shape belongs to at most one group on a board; grouped shapes are placed with their group.
+  const groupOf = new Map<string, string>()
+  const blocks = new Map<string, Block>()
+  for (const group of elements) {
+    if (group.kind !== 'group') continue
+    const members = shapes.filter((shape) => group.contains.includes(shape.id) && !groupOf.has(shape.id))
+    if (members.length === 0) continue
+    members.forEach((member) => groupOf.set(member.id, group.id))
+    blocks.set(group.id, arrangeGroup(members, links))
+  }
+  const isPlaced = new Set([...shapes.map((shape) => shape.id), ...blocks.keys()])
+  const top = elements.filter((el) => isPlaced.has(el.id) && !groupOf.has(el.id))
+  const outer = (id: string) => groupOf.get(id) ?? id
+  const topLinks = links
+    .map((link) => ({ ...link, from: outer(link.from), to: outer(link.to) }))
+    .filter((link) => link.from !== link.to)
+
   // A flow needs links between the shapes; without any it would stack everything in one column.
-  const members = new Set(shapes.map((shape) => shape.id))
-  const connected = links.some((link) => members.has(link.from) && members.has(link.to))
+  const members = new Set(top.map((shape) => shape.id))
+  const connected = topLinks.some((link) => members.has(link.from) && members.has(link.to))
   const layout = board.layout === 'flow' && !connected ? 'row' : (board.layout ?? (connected ? 'flow' : 'row'))
 
-  const diagram = placeNotes(notes, region, shapes.length > 0, placements)
-  if (shapes.length > 0) placeShapes(shapes, links, layout, diagram, placements)
+  const diagram = placeNotes(notes, region, top.length > 0, placements)
+  if (top.length > 0) placeShapes(top, topLinks, layout, diagram, placements, blocks)
+  for (const [id, block] of blocks) {
+    const group = placements.get(id)!
+    for (const [member, offset] of block.offsets) {
+      placements.set(member, { x: group.x + offset.x * group.scale, y: group.y + offset.y * group.scale, scale: group.scale, curve: 0 })
+    }
+  }
 
   // Tokens are moved by their travel animations; until then they wait at the centre.
   for (const el of elements) {
@@ -56,6 +83,37 @@ export function layoutBoard(board: Board, elements: Element[]): Map<string, Plac
   }
   routeLinks(links, shapes, placements)
   return placements
+}
+
+/** A group's members arranged around the group's centre, and the room the group takes. */
+interface Block {
+  size: Size
+  offsets: Map<string, { x: number; y: number }>
+}
+
+function arrangeGroup(members: Element[], links: ElementOf<'link'>[]): Block {
+  const ids = new Set(members.map((member) => member.id))
+  const gap = links.some((link) => ids.has(link.from) && ids.has(link.to)) ? LINKED_GAP : GAP
+  const sizes = members.map(measure)
+  const cellW = Math.max(...sizes.map((size) => size.width))
+  const cellH = Math.max(...sizes.map((size) => size.height))
+  const n = members.length
+  const cols = n <= 3 ? n : Math.ceil(Math.sqrt(n))
+  const rows = Math.ceil(n / cols)
+  const innerW = cols * cellW + (cols - 1) * gap.x
+  const innerH = rows * cellH + (rows - 1) * gap.y
+  const offsets = new Map<string, { x: number; y: number }>()
+  members.forEach((member, i) => {
+    const row = Math.floor(i / cols)
+    const inRow = Math.min(cols, n - row * cols)
+    const col = (i % cols) + (cols - inRow) / 2
+    offsets.set(member.id, {
+      x: -innerW / 2 + col * (cellW + gap.x) + cellW / 2 - sizes[i].cx,
+      // The label band sits above the members, so they sit half of it lower than the block's centre.
+      y: -innerH / 2 + row * (cellH + gap.y) + cellH / 2 - sizes[i].cy + GROUP.label / 2,
+    })
+  })
+  return { size: { width: innerW + GROUP.pad * 2, height: innerH + GROUP.pad * 2 + GROUP.label, cx: 0, cy: 0 }, offsets }
 }
 
 /** Stacks notes at the bottom of the region (or centred when they are all there is); returns what is left. */
@@ -72,11 +130,18 @@ function placeNotes(notes: ElementOf<'text'>[], region: Rect, belowDiagram: bool
   return belowDiagram ? { ...region, y1: region.y1 - height - GAP.y } : region
 }
 
-function placeShapes(shapes: Element[], links: ElementOf<'link'>[], layout: Layout, area: Rect, placements: Map<string, Placement>): void {
+function placeShapes(
+  shapes: Element[],
+  links: ElementOf<'link'>[],
+  layout: Layout,
+  area: Rect,
+  placements: Map<string, Placement>,
+  blocks: Map<string, Block>,
+): void {
   // Linked shapes need room for an arrow and for the longest link label beside it.
   const labelRoom = Math.max(0, ...links.map((link) => (link.label ? textWidth(link.label, LINK_LABEL_SIZE) + 40 : 0)))
   const gap = links.length > 0 ? { x: Math.max(LINKED_GAP.x, labelRoom), y: LINKED_GAP.y } : GAP
-  const sizes = shapes.map(measure)
+  const sizes = shapes.map((shape) => blocks.get(shape.id)?.size ?? measure(shape))
   const cellW = Math.max(...sizes.map((size) => size.width))
   const cellH = Math.max(...sizes.map((size) => size.height))
   const width = area.x1 - area.x0

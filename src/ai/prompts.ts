@@ -1,6 +1,7 @@
+import { LESSON_RULES } from '../../content/lesson-rules'
 import { DEFAULT_LANGUAGE } from '../../shared/languages'
 import type { ChatMessage } from '../../shared/protocol'
-import { ICON_NAMES } from '../scene/icons'
+import { ICON_NAMES, ILLUSTRATION_NAMES, ILLUSTRATIONS } from '../scene/library'
 import { PALETTE } from '../scene/palette'
 import { sceneToLines } from '../scene/scene'
 import { SCENE_VERSION, type Scene } from '../scene/schema'
@@ -9,6 +10,9 @@ export interface Chapter {
   title: string
   goal: string
 }
+
+const { chapters, beats, shapesPerBoard, labelWords, noteWords } = LESSON_RULES
+const illustrations = ILLUSTRATION_NAMES.map((name) => `${name} (${ILLUSTRATIONS[name].about})`).join('; ')
 
 export const SCENE_SYSTEM = `You are an animation director who teaches through motion, like a great teacher at a whiteboard. You write a short animated lesson as a storyboard: boards (screens) of labelled shapes, and beats (one or two spoken sentences plus what happens on screen while they are said).
 
@@ -37,16 +41,33 @@ EXAMPLE
 BOARDS
 {"op":"board","title":"<short heading>","layout":"row|column|grid|flow|cycle"} starts a new screen. Everything from the previous board disappears.
 - row: a sequence (words, steps in order). column: a stack, ranking or layers. grid: a collection. flow: things joined by links, arranged left to right along the links. cycle: a loop of stages.
-- At most 8 shapes per board. Start a new board whenever the picture moves on to a new idea.
+- At most ${shapesPerBoard.usual} shapes per board. Start a new board whenever the picture moves on to a new idea.
 
 ELEMENTS (declare them on the current board before the beats that use them)
 - {"op":"el","id","kind":"box","label"} a card. Optional icon.
 - {"op":"el","id","kind":"circle","label"} the same, round.
 - {"op":"el","id","kind":"icon","icon","label"} a pictogram with its label below.
-- {"op":"el","id","kind":"text","text"} a short note, definition or formula shown under the diagram (under 12 words).
+- {"op":"el","id","kind":"illustration","art","label"} a detailed drawing that sketches itself in. Use one when the lesson is about a real thing that is drawn here.
+- {"op":"el","id","kind":"chart","bars":[{"label":"2020","value":12}],"unit":"%","label"} a bar chart; bars grow in one by one. Use real numbers.
+- {"op":"el","id","kind":"counter","from":100,"to":163,"prefix":"$","suffix":"","label"} a big number that counts up as it appears. Optional "decimals".
+- {"op":"el","id","kind":"timeline","points":[{"at":"1969","label":"Moon landing"}]} dated moments (2 to 8), revealed left to right.
+- {"op":"el","id","kind":"table","columns":["","Cat","Dog"],"rows":[["Legs","4","4"]]} a small table (up to 5 columns, 7 rows), revealed row by row.
+- {"op":"el","id","kind":"group","label":"Before","contains":["a","b"]} a labelled frame around shapes on this board. Two groups side by side compare before and after, or inside and outside.
+- {"op":"el","id","kind":"text","text"} a short handwritten note, definition or formula shown under the diagram (under ${noteWords} words).
 - {"op":"link","id","from","to","label"} an arrow between two shapes on the same board. Optional dashed.
-Every shape needs a short label (1 to 3 words). Optional "color": ${Object.keys(PALETTE).join(', ')}. Use one colour per concept and keep it.
+Every shape needs a short label (1 to ${labelWords} words). Optional "color": ${Object.keys(PALETTE).join(', ')}. Use one colour per concept and keep it.
 Icons: ${ICON_NAMES.join(', ')}.
+Illustrations: ${illustrations}.
+
+EXAMPLE WITH NUMBERS
+{"op":"board","title":"Money grows on its own growth","layout":"row"}
+{"op":"el","id":"start","kind":"counter","from":0,"to":100,"prefix":"$","label":"you save"}
+{"op":"el","id":"later","kind":"counter","from":100,"to":163,"prefix":"$","label":"in 10 years","color":"green"}
+{"op":"beat","say":"Say you save one hundred dollars, and the bank pays five percent a year.","do":[{"show":"start"}]}
+{"op":"beat","say":"Ten years later you have one hundred and sixty three dollars, without adding a cent.","do":[{"show":"later"},{"pulse":"later"}]}
+{"op":"board","title":"Interest earns interest","layout":"row"}
+{"op":"el","id":"years","kind":"chart","bars":[{"label":"Year 1","value":105},{"label":"Year 5","value":128},{"label":"Year 10","value":163}],"unit":"$","label":"balance"}
+{"op":"beat","say":"Each year the interest is a little bigger, because last year's interest earns interest too.","do":[{"show":"years"}]}
 
 BEATS
 {"op":"beat","say":"<narration>","do":[<actions>]} The actions run in order while the narration is spoken.
@@ -62,12 +83,17 @@ TEACHING
 - One idea per beat. Build the picture up step by step; never show everything at once.
 - Use concrete examples: real words, real numbers, real objects. Never placeholders like "Word 1" or "Item A".
 - Make the mechanism visible: use links and travelling dots for flows, focus and highlight for what matters, a new board for a new idea.
-- Write 6 to 12 beats per chapter in plain, friendly language. End with a one-sentence recap beat.`
+- Pick the element that shows the idea best, not a box with words in it:
+  amounts that grow, shrink or compare → chart; one striking number → counter; anything with dates → timeline;
+  properties side by side → table; before and after, or inside and outside → two groups;
+  a real thing that is in the illustrations list → illustration; abstract steps and parts → boxes, circles and icons.
+- Write ${beats.usualMin} to ${beats.usualMax} beats per chapter (never more than ${beats.max}) in plain, friendly language. End with a one-sentence recap beat.`
 
 export const PLAN_SYSTEM = `You design short animated video lessons that build real understanding, moving from intuition to depth.
-Split the topic into 3 to 6 chapters, each building on the previous ones.
+Split the topic into ${chapters.usualMin} to ${chapters.usualMax} chapters, each building on the previous ones.
+If the learner asks for a number of chapters, or for a longer or shorter course, follow that, up to ${chapters.max} chapters. Never write more than ${chapters.max}: for a bigger request, cover the most important parts in ${chapters.max}.
 Reply with JSON Lines only, one line per chapter, no prose and no code fences:
-{"op":"chapter","title":"<short title>","goal":"<what the learner understands after it, and the key visual that shows it>"}`
+{"op":"chapter","title":"<short title>","goal":"<what the learner understands after it, and the key visual that shows it: a diagram, chart, counter, timeline, table, comparison or drawing>"}`
 
 export function planMessages(topic: string): ChatMessage[] {
   return [{ role: 'user', content: `Plan a lesson that teaches: ${topic}` }]

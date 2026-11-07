@@ -1,0 +1,67 @@
+{
+  "atom": {
+    "about": "an atom: nucleus of protons and neutrons with electrons on three orbits",
+    "tags": ["physics", "chemistry", "science"],
+    "credit": "Original drawing for AI Theatre"
+  },
+  "bank": {
+    "about": "a classical bank building with columns",
+    "tags": ["finance", "money", "economy"],
+    "credit": "Original drawing for AI Theatre"
+  },
+  "cell-tower": {
+    "about": "a radio mast sending out signal waves",
+    "tags": ["networks", "mobile", "radio", "telecoms"],
+    "credit": "Original drawing for AI Theatre"
+  },
+  "city": {
+    "about": "a city skyline of office towers",
+    "tags": ["urban", "economy", "population", "infrastructure"],
+    "credit": "Original drawing for AI Theatre"
+  },
+  "dna": {
+    "about": "a DNA double helix with base pairs",
+    "tags": ["biology", "genetics"],
+    "credit": "Original drawing for AI Theatre"
+  },
+  "factory": {
+    "about": "a factory with a smoking chimney",
+    "tags": ["industry", "manufacturing", "pollution", "energy"],
+    "credit": "Original drawing for AI Theatre"
+  },
+  "globe": {
+    "about": "the Earth as a globe with continents and lines of latitude",
+    "tags": ["geography", "world", "climate", "internet"],
+    "credit": "Original drawing for AI Theatre"
+  },
+  "heart": {
+    "about": "a human heart with its main blood vessels",
+    "tags": ["biology", "anatomy", "health", "medicine"],
+    "credit": "Original drawing for AI Theatre"
+  },
+  "microchip": {
+    "about": "a computer chip with its pins",
+    "tags": ["computing", "hardware", "electronics"],
+    "credit": "Original drawing for AI Theatre"
+  },
+  "plant-cell": {
+    "about": "a plant cell: wall, membrane, nucleus, vacuole and chloroplasts",
+    "tags": ["biology", "plants", "cells"],
+    "credit": "Original drawing for AI Theatre"
+  },
+  "rocket": {
+    "about": "a rocket lifting off with flames",
+    "tags": ["space", "physics", "engineering", "launch"],
+    "credit": "Original drawing for AI Theatre"
+  },
+  "server-rack": {
+    "about": "a rack of servers with status lights",
+    "tags": ["computing", "cloud", "data centre", "web"],
+    "credit": "Original drawing for AI Theatre"
+  },
+  "tree": {
+    "about": "a tree with its roots spreading under the ground",
+    "tags": ["nature", "plants", "ecology", "growth"],
+    "credit": "Original drawing for AI Theatre"
+  }
+}

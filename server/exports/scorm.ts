@@ -18,10 +18,16 @@ import { zip, type ZipEntry } from './zip'
 const PLAYER = resolve('dist-player/player.js')
 
 /** The standalone player script; built on first use in development (`npm run build` makes it for production). */
+let built: Promise<unknown> | undefined
+
+/**
+ * The standalone player. `npm run build` makes it for production; elsewhere it is rebuilt once per
+ * run, so a package never carries a player older than the code that draws the lesson.
+ */
 async function playerScript(): Promise<Buffer> {
-  if (!existsSync(PLAYER)) {
-    const { build } = await import('vite')
-    await build({ configFile: resolve('vite.player.config.ts'), logLevel: 'warn' })
+  if (!existsSync(PLAYER) || process.env.NODE_ENV !== 'production') {
+    built ??= import('vite').then(({ build }) => build({ configFile: resolve('vite.player.config.ts'), logLevel: 'warn' }))
+    await built
   }
   return readFile(PLAYER)
 }
@@ -60,6 +66,8 @@ function page(title: string): string {
 <title>${escape(title)}</title>
 <style>
   @font-face { font-family: Inter; src: url(fonts/inter.woff2) format('woff2'); font-weight: 100 900; }
+  @font-face { font-family: Caveat; src: url(fonts/caveat-500.woff2) format('woff2'); font-weight: 500; }
+  @font-face { font-family: Caveat; src: url(fonts/caveat-700.woff2) format('woff2'); font-weight: 700; }
   html, body { margin: 0; background: #f4f0e6; }
   #lesson { max-width: 1100px; margin: 0 auto; padding: 16px; }
 </style>
@@ -103,14 +111,16 @@ export async function exportScorm({ project, brand, workspaceId, assetPath, outp
   onProgress(0.4)
 
   const require = createRequire(import.meta.url)
-  const font = await readFile(require.resolve('@fontsource-variable/inter/files/inter-latin-wght-normal.woff2'))
+  const font = (file: string) => readFile(require.resolve(file))
   // The packaged page loads the logo from media/ like everything else.
   const packaged = { ...lesson, brand: brand && { ...brand, logo: brand.logo ? `media/${fileName(brand.logo)}` : undefined } }
   entries.push(
     { name: 'index.html', data: Buffer.from(page(project.name)) },
     { name: 'lesson.js', data: Buffer.from(`window.AI_THEATRE_LESSON = ${JSON.stringify(packaged).replace(/</g, '\\u003c')};\n`) },
     { name: 'player.js', data: await playerScript() },
-    { name: 'fonts/inter.woff2', data: font },
+    { name: 'fonts/inter.woff2', data: await font('@fontsource-variable/inter/files/inter-latin-wght-normal.woff2') },
+    { name: 'fonts/caveat-500.woff2', data: await font('@fontsource/caveat/files/caveat-latin-500-normal.woff2') },
+    { name: 'fonts/caveat-700.woff2', data: await font('@fontsource/caveat/files/caveat-latin-700-normal.woff2') },
     ...[...media].map(([name, data]) => ({ name: `media/${name}`, data })),
   )
   onProgress(0.8)

@@ -4,7 +4,7 @@
 // anything: src/scene/layout.ts places each board and src/scene/compile.ts derives the timing.
 
 import { z, ZodError } from 'zod'
-import { ICONS } from './icons'
+import { ICONS, ILLUSTRATIONS } from './library'
 import { toColor } from './palette'
 
 export const SCENE_VERSION = 3
@@ -25,12 +25,21 @@ const icon = z
   .transform((name) => (name in ICONS ? name : undefined))
   .optional()
 
+const ids = z.union([z.string(), z.array(z.string()).min(1)]).transform((value) => (Array.isArray(value) ? value : [value]))
+
 const common = {
   id,
   color: color.optional(),
   label: z.string().optional(),
   labelAt: z.enum(['below', 'above', 'inside']).optional(),
 }
+
+/** A bar of a chart: {"label","value"} or ["label", value]. */
+const bar = z.union([
+  z.object({ label: z.coerce.string(), value: z.coerce.number() }),
+  z.tuple([z.coerce.string(), z.coerce.number()]).transform(([label, value]) => ({ label, value })),
+])
+const moment = z.object({ at: z.coerce.string(), label: z.coerce.string().default('') })
 
 export const ElementSchema = z.discriminatedUnion('kind', [
   z.object({ ...common, kind: z.literal('box'), w: z.number().min(60).max(400).default(170), h: z.number().min(40).max(300).default(110), icon }),
@@ -44,7 +53,35 @@ export const ElementSchema = z.discriminatedUnion('kind', [
     size: z.number().min(16).max(64).default(28),
     weight: z.number().default(500),
     width: z.number().min(200).max(1100).default(900),
+    /** Notes are handwritten; board titles are set in the sans-serif. */
+    font: z.enum(['hand', 'sans']).optional(),
   }),
+  /** A drawing from content/illustrations; `size` is its longer side. */
+  z.object({ ...common, kind: z.literal('illustration'), art: z.string().refine((n) => n in ILLUSTRATIONS, 'unknown illustration'), size: z.number().min(80).max(420).default(230) }),
+  /** A bar chart whose bars grow in, with real numbers. */
+  z.object({ ...common, kind: z.literal('chart'), bars: z.array(bar).min(1).max(12), unit: z.string().max(12).optional() }),
+  /** A number that counts from `from` to `to` as it appears. */
+  z.object({
+    ...common,
+    kind: z.literal('counter'),
+    from: z.coerce.number().default(0),
+    to: z.coerce.number(),
+    prefix: z.string().max(4).default(''),
+    suffix: z.string().max(12).default(''),
+    decimals: z.number().int().min(0).max(3).default(0),
+    size: z.number().min(40).max(120).default(64),
+  }),
+  /** Dated moments along a line, revealed left to right. */
+  z.object({ ...common, kind: z.literal('timeline'), points: z.array(moment).min(2).max(8) }),
+  /** A small table, revealed row by row. */
+  z.object({
+    ...common,
+    kind: z.literal('table'),
+    columns: z.array(z.coerce.string()).min(1).max(5),
+    rows: z.array(z.array(z.coerce.string())).min(1).max(7),
+  }),
+  /** A labelled frame around other shapes on the board ("Before" / "After", "Inside the cell"). */
+  z.object({ ...common, kind: z.literal('group'), contains: ids.pipe(z.array(z.string()).max(8)) }),
 ])
 
 export const LinkSchema = z.object({
@@ -84,8 +121,6 @@ export interface Visual {
 export type SceneElement = Element & Visual & { curve: number }
 
 // ── Actions inside a beat ───────────────────────────────────────────────────
-
-const ids = z.union([z.string(), z.array(z.string()).min(1)]).transform((value) => (Array.isArray(value) ? value : [value]))
 
 /** One schema per action, keyed by the field that names it. Extra fields are ignored. */
 const ACTIONS = {
@@ -183,7 +218,7 @@ export function parseOp(raw: unknown): SceneOp {
       // Models use the kind as the op, invent kinds, and declare links as elements.
       const kind = normalizeKind(op === 'el' ? rest.kind : op, rest)
       if (kind === 'link') return { op: 'link', link: LinkSchema.parse(rest) }
-      return { op: 'el', element: ElementSchema.parse({ ...rest, kind }) }
+      return { op: 'el', element: ElementSchema.parse(normalizeFields(kind, rest)) }
     }
     case 'link':
       return { op, link: LinkSchema.parse(rest) }
@@ -196,6 +231,8 @@ export function parseOp(raw: unknown): SceneOp {
   }
 }
 
+const KINDS = ['box', 'circle', 'icon', 'text', 'dot', 'illustration', 'chart', 'counter', 'timeline', 'table', 'group']
+
 const KIND_ALIASES: Record<string, string> = {
   rect: 'box',
   rectangle: 'box',
@@ -207,9 +244,26 @@ const KIND_ALIASES: Record<string, string> = {
   shape: 'box',
   ellipse: 'circle',
   oval: 'circle',
-  image: 'icon',
   symbol: 'icon',
   emoji: 'icon',
+  image: 'illustration',
+  picture: 'illustration',
+  drawing: 'illustration',
+  art: 'illustration',
+  graph: 'chart',
+  'bar-chart': 'chart',
+  bars: 'chart',
+  number: 'counter',
+  stat: 'counter',
+  statistic: 'counter',
+  history: 'timeline',
+  events: 'timeline',
+  matrix: 'table',
+  grid: 'table',
+  container: 'group',
+  frame: 'group',
+  area: 'group',
+  region: 'group',
   label: 'text',
   note: 'text',
   caption: 'text',
@@ -226,10 +280,36 @@ const KIND_ALIASES: Record<string, string> = {
 function normalizeKind(kind: unknown, fields: Record<string, unknown>): string {
   const name = String(kind ?? '').toLowerCase()
   if (name === 'link' || ((KIND_ALIASES[name] === 'link' || !name) && 'from' in fields && 'to' in fields)) return 'link'
-  if (['box', 'circle', 'icon', 'text', 'dot'].includes(name)) return name
+  if (KINDS.includes(name)) return name
   const alias = KIND_ALIASES[name]
   if (alias && alias !== 'link') return alias
   return 'text' in fields && !('label' in fields) ? 'text' : 'box'
+}
+
+/**
+ * Accepts the field names models reach for (data, values, events, headers) and turns a drawing
+ * that does not exist into the matching icon, or a labelled box, rather than losing it.
+ */
+function normalizeFields(kind: string, fields: Record<string, unknown>): Record<string, unknown> {
+  const pick = (...names: string[]) => names.map((name) => fields[name]).find((value) => value !== undefined)
+  switch (kind) {
+    case 'illustration': {
+      const art = String(pick('art', 'name', 'src', 'icon') ?? '')
+      if (art in ILLUSTRATIONS) return { ...fields, kind, art }
+      const label = fields.label ?? art.replace(/[-_]+/g, ' ')
+      return art in ICONS ? { ...fields, kind: 'icon', icon: art, label, size: 96 } : { ...fields, kind: 'box', label }
+    }
+    case 'chart':
+      return { ...fields, kind, bars: pick('bars', 'data', 'values', 'items') }
+    case 'timeline':
+      return { ...fields, kind, points: pick('points', 'events', 'items', 'moments') }
+    case 'table':
+      return { ...fields, kind, columns: pick('columns', 'headers', 'header', 'cols'), rows: pick('rows', 'data', 'cells') }
+    case 'group':
+      return { ...fields, kind, contains: pick('contains', 'members', 'children', 'items', 'ids') }
+    default:
+      return { ...fields, kind }
+  }
 }
 
 export function describeError(error: unknown): string {

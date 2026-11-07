@@ -2,6 +2,8 @@
 // and the layout check measures with it, so all three agree on where things are.
 
 import type { Element, ElementOf } from './schema'
+import { lineHeight, textWidth, wrapText } from './text'
+import { artSize, CHART, counterExtent, tableLayout, timelineExtent } from './widgets'
 
 export interface Point {
   x: number
@@ -26,30 +28,8 @@ export interface Placed {
 export const LABEL_SIZE = 22
 export const LINK_LABEL_SIZE = 18
 const LABEL_GAP = 12
-const CHAR_WIDTH = 0.56 // average glyph width in em, used to estimate text extents
 
-export const textWidth = (text: string, size: number) => text.length * size * CHAR_WIDTH
-export const lineHeight = (size: number) => size * 1.25
-
-/** Greedy word wrap using the estimated glyph width. */
-export function wrapText(text: string, size: number, width: number): string[] {
-  const maxChars = Math.max(8, Math.floor(width / (size * CHAR_WIDTH)))
-  return text.split('\n').flatMap((paragraph) => {
-    const lines: string[] = []
-    let line = ''
-    for (const word of paragraph.split(/\s+/).filter(Boolean)) {
-      if (line && line.length + 1 + word.length > maxChars) {
-        lines.push(line)
-        line = word
-      } else {
-        line = line ? `${line} ${word}` : word
-      }
-    }
-    return [...lines, line]
-  })
-}
-
-/** Half width and height of the shape around its centre, unscaled. Null for open strokes. */
+/** Half width and height of the shape around its centre, unscaled. Null for links and groups, which are drawn around other things. */
 export function shapeExtent(el: Element): { hw: number; hh: number } | null {
   switch (el.kind) {
     case 'box':
@@ -64,15 +44,31 @@ export function shapeExtent(el: Element): { hw: number; hh: number } | null {
       const widest = Math.max(...lines.map((line) => textWidth(line, el.size)))
       return { hw: widest / 2, hh: (lines.length * lineHeight(el.size)) / 2 }
     }
-    default:
+    case 'illustration': {
+      const { w, h } = artSize(el)
+      return { hw: w / 2, hh: h / 2 }
+    }
+    case 'chart':
+      return { hw: CHART.width / 2, hh: CHART.height / 2 }
+    case 'counter':
+      return counterExtent(el)
+    case 'timeline':
+      return timelineExtent(el)
+    case 'table': {
+      const { width, height } = tableLayout(el)
+      return { hw: width / 2, hh: height / 2 }
+    }
+    case 'link':
+    case 'group':
       return null
   }
 }
 
-type Labelled = ElementOf<'box' | 'circle' | 'icon' | 'dot'>
+type Labelled = Exclude<Element, ElementOf<'text' | 'link' | 'group'>>
 
+/** Shapes whose label is drawn with them; text needs none, links and groups draw their own. */
 export const hasShapeLabel = (el: Element): el is Labelled =>
-  Boolean(el.label) && (el.kind === 'box' || el.kind === 'circle' || el.kind === 'icon' || el.kind === 'dot')
+  Boolean(el.label) && el.kind !== 'text' && el.kind !== 'link' && el.kind !== 'group'
 
 export function labelPosition(el: Labelled): 'below' | 'above' | 'inside' {
   if (el.labelAt) return el.labelAt
@@ -84,7 +80,7 @@ export function labelOffset(el: Labelled): number {
   const { hh } = shapeExtent(el)!
   switch (labelPosition(el)) {
     case 'inside':
-      return el.kind !== 'icon' && el.kind !== 'dot' && el.icon ? hh * 0.5 : 0
+      return (el.kind === 'box' || el.kind === 'circle') && el.icon ? hh * 0.5 : 0
     case 'above':
       return -(hh + LABEL_GAP + LABEL_SIZE / 2)
     case 'below':
@@ -138,7 +134,8 @@ function edgePoint(placed: Placed, toward: Point, gap: number): Point {
 
   const rect = bounds(placed)
   let distance = 0
-  if (rect && (el.kind === 'box' || el.kind === 'text' || (hasShapeLabel(el) && labelPosition(el) !== 'inside'))) {
+  const round = el.kind === 'circle' || el.kind === 'dot' || el.kind === 'icon'
+  if (rect && (!round || (hasShapeLabel(el) && labelPosition(el) !== 'inside'))) {
     const tx = ux > 0 ? (rect.x1 - x) / ux : ux < 0 ? (rect.x0 - x) / ux : Infinity
     const ty = uy > 0 ? (rect.y1 - y) / uy : uy < 0 ? (rect.y0 - y) / uy : Infinity
     distance = Math.min(tx, ty)

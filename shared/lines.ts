@@ -17,6 +17,8 @@ export async function* readLines(body: ReadableStream<Uint8Array>): AsyncGenerat
     buffer += decoder.decode()
     if (buffer) yield buffer
   } finally {
-    reader.releaseLock()
+    // Also runs when the reader stops early (e.g. a lesson outline reached its last chapter):
+    // cancelling closes the connection, so the model stops writing and billing.
+    await reader.cancel().catch(() => {})
   }
 }

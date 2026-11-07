@@ -1,5 +1,7 @@
+import { LESSON_RULES } from '../../content/lesson-rules'
 import { compile } from './compile'
-import { hasShapeLabel, LABEL_SIZE, labelPosition, textWidth } from './geometry'
+import { hasShapeLabel, LABEL_SIZE, labelPosition } from './geometry'
+import { textWidth } from './text'
 import { THEME, toHex } from './palette'
 import { describeError, parseAction, SCENE_VERSION, type Action, type Element, type ElementKind, type Scene, type SceneOp } from './schema'
 
@@ -12,7 +14,16 @@ const DEFAULT_COLOR: Record<ElementKind, string> = {
   dot: 'amber',
   text: THEME.text,
   link: 'slate',
+  illustration: 'white',
+  chart: 'blue',
+  counter: 'amber',
+  timeline: 'teal',
+  table: 'sky',
+  group: 'slate',
 }
+
+/** Things that take a place in a board's layout (notes stack underneath, tokens travel, groups frame). */
+const isShape = (el: Element) => el.kind !== 'text' && el.kind !== 'link' && el.kind !== 'dot' && el.kind !== 'group'
 
 const LABEL_PADDING = 36
 const MAX_BOX_WIDTH = 360
@@ -29,7 +40,7 @@ export const emptyScene = (): Scene => ({ version: SCENE_VERSION, boards: [], el
 export function applyOp(scene: Scene, op: SceneOp, warn: Warn): Scene {
   // Elements and beats need a board; models sometimes start without one.
   let s: Scene = scene.boards.length > 0 || op.op === 'board' ? scene : { ...scene, boards: [{}] }
-  const board = Math.max(0, s.boards.length - 1)
+  let board = Math.max(0, s.boards.length - 1)
 
   switch (op.op) {
     case 'ignore':
@@ -39,6 +50,13 @@ export function applyOp(scene: Scene, op: SceneOp, warn: Warn): Scene {
       return { ...s, boards: [...s.boards, { title: op.title, layout: op.layout }] }
 
     case 'el': {
+      // A full board continues on a new one with the same title, so no board gets crowded.
+      const declared = find(s, op.element.id)
+      const full = s.elements.filter((el) => el.boards.includes(board) && isShape(el)).length >= LESSON_RULES.shapesPerBoard.max
+      if (full && op.element.kind !== 'text' && op.element.kind !== 'group' && !declared?.boards.includes(board)) {
+        s = { ...s, boards: [...s.boards, { ...s.boards[board] }] }
+        board += 1
+      }
       const previous = find(s, op.element.id)
       const boards = previous ? union(previous.boards, board) : [board]
       // Dots are travel tokens. One the AI declares itself is a thing to look at: lay it out as a circle.
@@ -55,6 +73,10 @@ export function applyOp(scene: Scene, op: SceneOp, warn: Warn): Scene {
     }
 
     case 'beat': {
+      if (s.beats.length >= LESSON_RULES.beats.max) {
+        warn(`beat skipped: a chapter has at most ${LESSON_RULES.beats.max} beats`)
+        return s
+      }
       const actions: Action[] = []
       for (const raw of op.do) {
         let action: Action
@@ -160,9 +182,33 @@ export function finalizeScene(input: Scene, warn: Warn = () => {}): Scene {
       return ids.length ? [{ ...action, ids }] : []
     }),
   }))
-  const pruned = { ...scene, elements, beats }
+  const pruned = withGroupMembers({ ...scene, elements, beats }, warn)
   const { cues, duration } = compile(pruned)
   return { ...pruned, cues, duration }
+}
+
+/**
+ * A group frames shapes, so they appear wherever it does. Members that are not shapes (or were never
+ * declared) are dropped, and so is a group left with nothing to frame.
+ */
+function withGroupMembers(input: Scene, warn: Warn): Scene {
+  let scene = input
+  for (const group of input.elements) {
+    if (group.kind !== 'group') continue
+    const contains = group.contains.filter((id) => {
+      const member = find(scene, id)
+      if (member && isShape(member)) return true
+      warn(`group "${group.id}": "${id}" is not a shape on its board, left out`)
+      return false
+    })
+    if (contains.length === 0) {
+      scene = { ...scene, elements: scene.elements.filter((el) => el.id !== group.id) }
+      continue
+    }
+    scene = upsert(scene, { ...group, contains })
+    for (const board of group.boards) for (const id of contains) scene = carry(scene, id, board)
+  }
+  return scene
 }
 
 /** The inverse of parsing: shows the AI the current scene when refining it. */

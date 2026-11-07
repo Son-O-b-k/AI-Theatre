@@ -280,7 +280,7 @@ describe('exports', () => {
     const project: Project = { id: 'p1', name: 'How models read', createdAt: '', updatedAt: '', outputs: [chapter()] }
     await exportScorm({ project, brand: null, workspaceId: 'w', assetPath: (u) => u, output: file, onProgress: () => {} })
     const names = execFileSync('unzip', ['-Z1', file]).toString().trim().split('\n').sort()
-    assert.deepEqual(names, ['fonts/inter.woff2', 'imsmanifest.xml', 'index.html', 'lesson.js', 'player.js'])
+    assert.deepEqual(names, ['fonts/caveat-500.woff2', 'fonts/caveat-700.woff2', 'fonts/inter.woff2', 'imsmanifest.xml', 'index.html', 'lesson.js', 'player.js'])
     const manifest = execFileSync('unzip', ['-p', file, 'imsmanifest.xml']).toString()
     assert.match(manifest, /adlcp:scormtype="sco" href="index.html"/)
     assert.match(manifest, /<schemaversion>1\.2<\/schemaversion>/)

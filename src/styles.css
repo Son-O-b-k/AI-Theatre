@@ -3,6 +3,9 @@
 @import '@fontsource-variable/fraunces';
 /* The stage measures its text for Inter (src/scene/geometry.ts), so it keeps using it. */
 @import '@fontsource-variable/inter';
+/* Handwritten notes on the stage (src/stage/elements.ts). */
+@import '@fontsource/caveat/500.css';
+@import '@fontsource/caveat/700.css';
 
 /* Chalk & paper: a warm paper interface around a dark chalkboard stage, one vermilion accent. */
 @theme {
