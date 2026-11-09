@@ -12,7 +12,13 @@ export interface Chapter {
 }
 
 const { chapters, beats, shapesPerBoard, labelWords, noteWords } = LESSON_RULES
+// Drawings are only offered while the content library has some (content/illustrations).
 const illustrations = ILLUSTRATION_NAMES.map((name) => `${name} (${ILLUSTRATIONS[name].about})`).join('; ')
+const illustrationElement = illustrations
+  ? '\n- {"op":"el","id","kind":"illustration","art","label"} a detailed drawing that sketches itself in. "art" is one of the illustrations listed below.'
+  : ''
+const illustrationList = illustrations ? `\nIllustrations: ${illustrations}.` : ''
+const illustrationChoice = illustrations ? ' a real thing from the illustrations list → illustration;' : ''
 
 export const SCENE_SYSTEM = `You are an animation director who teaches through motion, like a great teacher at a whiteboard. You write a short animated lesson as a storyboard: boards (screens) of labelled shapes, and beats (one or two spoken sentences plus what happens on screen while they are said).
 
@@ -46,21 +52,19 @@ BOARDS
 ELEMENTS (declare them on the current board before the beats that use them)
 - {"op":"el","id","kind":"box","label"} a card. Optional icon.
 - {"op":"el","id","kind":"circle","label"} the same, round.
-- {"op":"el","id","kind":"icon","icon","label"} a pictogram with its label below.
-- {"op":"el","id","kind":"illustration","art","label"} a detailed drawing that sketches itself in. Use one when the lesson is about a real thing that is drawn here.
+- {"op":"el","id","kind":"icon","icon","label"} a pictogram with its label below.${illustrationElement}
 - {"op":"el","id","kind":"chart","bars":[{"label":"2020","value":12}],"unit":"%","label"} a bar chart; bars grow in one by one. Use real numbers.
-- {"op":"el","id","kind":"counter","from":100,"to":163,"prefix":"$","suffix":"","label"} a big number that counts up as it appears. Optional "decimals".
+- {"op":"el","id","kind":"counter","from":100,"to":163,"prefix":"$","suffix":"","label"} a big number that counts from one value to the other as it appears. Optional "decimals".
 - {"op":"el","id","kind":"timeline","points":[{"at":"1969","label":"Moon landing"}]} dated moments (2 to 8), revealed left to right.
 - {"op":"el","id","kind":"table","columns":["","Cat","Dog"],"rows":[["Legs","4","4"]]} a small table (up to 5 columns, 7 rows), revealed row by row.
-- {"op":"el","id","kind":"group","label":"Before","contains":["a","b"]} a labelled frame around shapes on this board. Two groups side by side compare before and after, or inside and outside.
+- {"op":"el","id","kind":"group","label":"Before","contains":["a","b"]} a labelled frame around shapes declared on this board. Showing, hiding or focusing the group does the same to the shapes inside. Two groups side by side compare before and after, or inside and outside.
 - {"op":"el","id","kind":"text","text"} a short handwritten note, definition or formula shown under the diagram (under ${noteWords} words).
 - {"op":"link","id","from","to","label"} an arrow between two shapes on the same board. Optional dashed.
 Every shape needs a short label (1 to ${labelWords} words). Optional "color": ${Object.keys(PALETTE).join(', ')}. Use one colour per concept and keep it.
-Icons: ${ICON_NAMES.join(', ')}.
-Illustrations: ${illustrations}.
+Icons: ${ICON_NAMES.join(', ')}.${illustrationList}
 
 EXAMPLE WITH NUMBERS
-{"op":"board","title":"Money grows on its own growth","layout":"row"}
+{"op":"board","title":"Saving earns interest","layout":"row"}
 {"op":"el","id":"start","kind":"counter","from":0,"to":100,"prefix":"$","label":"you save"}
 {"op":"el","id":"later","kind":"counter","from":100,"to":163,"prefix":"$","label":"in 10 years","color":"green"}
 {"op":"beat","say":"Say you save one hundred dollars, and the bank pays five percent a year.","do":[{"show":"start"}]}
@@ -86,7 +90,7 @@ TEACHING
 - Pick the element that shows the idea best, not a box with words in it:
   amounts that grow, shrink or compare → chart; one striking number → counter; anything with dates → timeline;
   properties side by side → table; before and after, or inside and outside → two groups;
-  a real thing that is in the illustrations list → illustration; abstract steps and parts → boxes, circles and icons.
+  ${illustrationChoice.trimStart()} abstract steps and parts → boxes, circles and icons.
 - Write ${beats.usualMin} to ${beats.usualMax} beats per chapter (never more than ${beats.max}) in plain, friendly language. End with a one-sentence recap beat.`
 
 export const PLAN_SYSTEM = `You design short animated video lessons that build real understanding, moving from intuition to depth.

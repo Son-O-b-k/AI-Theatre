@@ -70,4 +70,15 @@ app.onError((error, c) => {
 })
 
 // Hono's faster global Response breaks the voice model's downloads (server/speech.ts), so keep Node's own.
-serve({ fetch: app.fetch, port: PORT, overrideGlobalObjects: false }, () => console.log(`API listening on http://localhost:${PORT}`))
+const server = serve({ fetch: app.fetch, port: PORT, overrideGlobalObjects: false }, () => console.log(`API listening on http://localhost:${PORT}`))
+
+// Said plainly: an uncaught error here would be printed with a megabyte of the voice library's
+// source (phonemizer installs a global error handler), burying the message.
+server.on('error', (error: NodeJS.ErrnoException) => {
+  console.error(
+    error.code === 'EADDRINUSE'
+      ? `Port ${PORT} is already in use, probably by another copy of AI Theatre. Stop it, or set PORT in .env.`
+      : `The API could not start: ${error.message}`,
+  )
+  process.exit(1)
+})
