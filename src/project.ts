@@ -68,6 +68,14 @@ export function editNarration(output: Output, index: number, text: string | null
   return retimed(output, finalizeScene({ ...output.scene, beats, keys: undefined }))
 }
 
+/**
+ * A change from the chapter editor (src/scene/edit.ts). Like a narration edit, the chapter is laid out
+ * and timed again, which replaces keyframes fine-tuned in Studio.
+ */
+export function editScene(output: Output, scene: Scene): Output {
+  return retimed(output, finalizeScene({ ...scene, keys: undefined }))
+}
+
 /** The output with a re-timed scene, as a new revision (Theatre keeps the old timing under the old id). */
 export function retimed(output: Output, scene: Scene): Output {
   if (scene === output.scene) return output

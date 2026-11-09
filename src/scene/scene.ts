@@ -134,7 +134,7 @@ function carry(scene: Scene, id: string, board: number): Scene {
 }
 
 /** Grows a box or circle so a label written inside it fits. */
-function fitLabel(el: Element): Element {
+export function fitLabel(el: Element): Element {
   if (!hasShapeLabel(el) || labelPosition(el) !== 'inside') return el
   const needed = textWidth(el.label!, LABEL_SIZE) + LABEL_PADDING
   if (el.kind === 'box') return { ...el, w: Math.min(MAX_BOX_WIDTH, Math.max(el.w, needed)) }

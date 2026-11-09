@@ -13,6 +13,7 @@ import {
   Music,
   Package,
   Pause,
+  Pencil,
   Play,
   RotateCcw,
   SlidersHorizontal,
@@ -24,6 +25,7 @@ import { useEffect, useRef, useState, type MutableRefObject, type PointerEvent }
 import type { Brand, VoiceInfo } from '../../shared/protocol'
 import { api } from '../api'
 import { download, downloadJson, slug } from '../download'
+import { formatTime } from '../format'
 import { BROWSER_VOICE, unrecorded } from '../narration'
 import { theatreProjectId, type Output } from '../project'
 import { brandResolved, brandTheatreState } from '../scene/brand'
@@ -34,6 +36,7 @@ import { fromTheatreState, type TheatreState } from '../scene/theatre'
 import { mountScene, type Mounted } from '../stage/mount'
 import { Player } from '../stage/Player'
 import { SvgStage } from '../stage/SvgStage'
+import type { Editing } from '../hooks/useLayout'
 import { Button } from './ui/Button'
 import { cx } from './ui/cx'
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from './ui/Menu'
@@ -59,11 +62,17 @@ interface Props {
   /** Opens the export dialog for a video or a SCORM package. */
   onExport(kind: 'mp4' | 'scorm'): void
   onError(error: unknown): void
-  /** Keyframe editing: Theatre Studio is shown on this chapter, and its edits are kept when this turns off. */
-  editing: boolean
-  /** The workspace brand, applied to playback (not while editing keyframes, so it is never saved into a lesson). */
+  /**
+   * 'chapter': the chapter editor is open; clicking the stage picks an element.
+   * 'motion': Theatre Studio is shown on this chapter, and its keyframe edits are kept when it closes.
+   */
+  editing: Editing
+  /** The element outlined on stage in the chapter editor. */
+  selected: string | null
+  onPick(id: string | null): void
+  /** The workspace brand, applied to playback (not while editing, so it is never saved into a lesson). */
   brand: Brand | null
-  onEditKeyframes(): void
+  onEdit(mode: 'chapter' | 'motion'): void
   voices: VoiceInfo[]
   /** Premium voices need the Pro plan; choosing one then opens the plans. */
   premiumLocked: boolean
@@ -76,10 +85,6 @@ interface Props {
 /** Height of the control bar plus the gap above it. */
 const CONTROLS_HEIGHT = 64
 
-export const formatTime = (seconds: number) =>
-  `${Math.floor(seconds / 60)}:${Math.floor(seconds % 60)
-    .toString()
-    .padStart(2, '0')}`
 
 export function LessonPlayer(props: Props) {
   const { projectId, output, live, liveStatus, handle, caption, onChange, onError } = props
@@ -91,6 +96,8 @@ export function LessonPlayer(props: Props) {
   const stageRef = useRef<SvgStage | null>(null)
   const playerRef = useRef<Player | null>(null)
   const mountedRef = useRef<Mounted | null>(null)
+  /** Where playback is, so the chapter editor stays on the same moment when an edit remounts the chapter. */
+  const positionRef = useRef(0)
 
   // Latest props for callbacks that must not trigger a remount.
   const latest = useRef(props)
@@ -153,6 +160,7 @@ export function LessonPlayer(props: Props) {
         onPlayingChange: setPlaying,
         onEnded: () => latest.current.onEnded(),
         onTime: (seconds) => {
+          positionRef.current = seconds
           if (timeRef.current) timeRef.current.textContent = formatTime(seconds)
           if (fillRef.current) fillRef.current.style.width = `${(seconds / (current.scene.duration || 1)) * 100}%`
         },
@@ -163,7 +171,13 @@ export function LessonPlayer(props: Props) {
     if (current.audio) player.attachAudio(current.audio.url)
     playerRef.current = player
     mountedRef.current = mounted
-    if (latest.current.autoPlay) player.play()
+    if (latest.current.editing === 'chapter') {
+      const at = Math.min(positionRef.current, current.scene.duration)
+      mounted.sheet.project.ready.then(() => playerRef.current === player && player.seek(at))
+    } else {
+      positionRef.current = 0
+      if (latest.current.autoPlay) player.play()
+    }
 
     return () => {
       player.dispose()
@@ -174,12 +188,12 @@ export function LessonPlayer(props: Props) {
     }
   }, [mountKey])
 
-  // Keyframe editing: show Studio with this chapter selected; on leaving, keep what was edited.
+  // Fine-tuning motion: show Studio with this chapter selected; on leaving, keep what was edited.
   const { editing } = props
   useEffect(() => {
     const mounted = mountedRef.current
     const edited = latest.current.output
-    if (!editing || !mounted || !edited) return
+    if (editing !== 'motion' || !mounted || !edited) return
 
     const projectId = theatreProjectId(edited)
     playerRef.current?.pause()
@@ -195,6 +209,15 @@ export function LessonPlayer(props: Props) {
       latest.current.onChange({ ...base, theatreState: state, scene: fromTheatreState(base.scene, state) })
     }
   }, [editing, mountKey])
+
+  const selected = editing === 'chapter' ? props.selected : null
+  useEffect(() => {
+    stageRef.current?.select(selected)
+  }, [selected, mountKey])
+
+  useEffect(() => {
+    if (editing === 'chapter') playerRef.current?.pause()
+  }, [editing])
 
   const cues = output?.scene.cues
   useEffect(() => {
@@ -267,7 +290,13 @@ export function LessonPlayer(props: Props) {
             <div
               ref={hostRef}
               className="absolute inset-0 [&_svg]:size-full"
-              onClick={() => ready && playerRef.current?.toggle()}
+              onClick={(event) => {
+                if (!ready) return
+                if (editing !== 'chapter') return playerRef.current?.toggle()
+                playerRef.current?.pause()
+                const picked = (event.target as Element).closest('[data-id]')?.getAttribute('data-id') ?? null
+                props.onPick(picked)
+              }}
             />
 
             {live && (
@@ -323,11 +352,11 @@ export function LessonPlayer(props: Props) {
           </div>
         </div>
 
-        {/* While editing, Studio's own timeline replaces these controls. On phones the seek bar gets its own row. */}
+        {/* While fine-tuning motion, Studio's own timeline replaces these controls. On phones the seek bar gets its own row. */}
         <div
           className={cx(
             'flex flex-wrap items-center gap-1 rounded-xl border border-line bg-panel px-2 py-1.5',
-            editing && 'invisible',
+            editing === 'motion' && 'invisible',
           )}
         >
           <Button
@@ -451,8 +480,11 @@ export function LessonPlayer(props: Props) {
             )}
             <MenuSeparator />
             <MenuLabel>Edit</MenuLabel>
-            <MenuItem icon={SlidersHorizontal} disabled={!ready} onSelect={props.onEditKeyframes} hint="Theatre Studio">
-              Edit keyframes
+            <MenuItem icon={Pencil} disabled={!ready} onSelect={() => props.onEdit('chapter')}>
+              Edit chapter
+            </MenuItem>
+            <MenuItem icon={SlidersHorizontal} disabled={!ready} onSelect={() => props.onEdit('motion')} hint="advanced">
+              Fine-tune motion
             </MenuItem>
             <MenuSeparator />
             <MenuLabel>Export</MenuLabel>

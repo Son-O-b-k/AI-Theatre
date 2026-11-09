@@ -2,6 +2,7 @@ import {
   Check,
   CircleAlert,
   MonitorPlay,
+  Pencil,
   SlidersHorizontal,
   PanelLeftOpen,
   PanelRightClose,
@@ -18,6 +19,7 @@ import { ExportDialog } from './components/ExportDialog'
 import { ShareDialog } from './components/ShareDialog'
 import { WorkspaceDialog } from './components/workspace/WorkspaceDialog'
 import { Home } from './components/Home'
+import { ChapterEditor } from './components/editor/ChapterEditor'
 import { chapterTitle, LessonPanel, LIVE } from './components/LessonPanel'
 import { LessonPlayer, type PlayerHandle } from './components/LessonPlayer'
 import { PromptBox, type ModeOption } from './components/PromptBox'
@@ -31,12 +33,12 @@ import { useProjects } from './hooks/useProjects'
 import { useProviders } from './hooks/useProviders'
 import { useVoice } from './hooks/useVoice'
 import { BROWSER_VOICE, unrecorded } from './narration'
-import { editNarration, type Output, type Project } from './project'
+import { editNarration, editScene, type Output, type Project } from './project'
 import { emptyScene } from './scene/scene'
 import { SCENE_VERSION } from './scene/schema'
 import { DEFAULT_LANGUAGE } from '../shared/languages'
 
-/** While editing, the stage sits between Studio's outline (left), details panel (right) and timeline (bottom). */
+/** While fine-tuning motion, the stage sits between Studio's outline (left), details panel (right) and timeline (bottom). */
 const STUDIO_CLEARANCE = 'pl-[190px] pr-[250px] pb-[40vh]'
 
 /** Shown on stage while waiting for the model's first line. */
@@ -87,6 +89,8 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
   const [selected, setSelected] = useState<string | null>(null)
   const [autoPlayId, setAutoPlayId] = useState<string | null>(null)
   const [cueIndex, setCueIndex] = useState<number | null>(null)
+  /** The element selected in the chapter editor. */
+  const [picked, setPicked] = useState<string | null>(null)
   const [prompt, setPrompt] = useState('')
   const [mode, setMode] = useState<Mode>('refine')
   const player = useRef<PlayerHandle | null>(null)
@@ -114,7 +118,7 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
   const watchingLive = generator.busy && (selected === LIVE || outputs.length === 0)
 
   const select = (id: string) => {
-    layout.setEditing(false)
+    edit(null)
     setSelected(id)
     setAutoPlayId(null)
   }
@@ -135,7 +139,7 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
   const run = async (runMode: Mode, text: string) => {
     setError(null)
     const refining = runMode === 'refine' ? output : null
-    layout.setEditing(false)
+    layout.setEditing(null)
     setSelected(LIVE)
     await generator.run(runMode, text, runMode === 'teach' ? language : (project?.language ?? DEFAULT_LANGUAGE))
     if (refining) selectIfWatchingLive(refining.id)
@@ -163,11 +167,18 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
     if (ordered.length > 0) generator.narrate(ordered, next)
   }
 
-  const changeNarration = (index: number, text: string | null) => {
-    if (!output) return
-    const edited = editNarration(output, index, text)
+  /** Saves an edited chapter and records any line that has no recording in its voice yet. */
+  const saveEdit = (edited: Output) => {
     updateOutput(edited)
-    if (edited.scene.voice && !generator.busy) generator.narrate([edited], edited.scene.voice)
+    const { voice: recorded } = edited.scene
+    if (recorded && !generator.busy && unrecorded(edited.scene, recorded).length > 0) generator.narrate([edited], recorded)
+  }
+
+  const changeNarration = (index: number, text: string | null) => output && saveEdit(editNarration(output, index, text))
+
+  const edit = (mode: 'chapter' | 'motion' | null) => {
+    setPicked(null)
+    layout.setEditing(mode)
   }
 
   const updateOutput = useCallback(
@@ -176,7 +187,7 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
   )
 
   const openProject = (id: string) => {
-    layout.setEditing(false)
+    layout.setEditing(null)
     setSelected(null)
     setAutoPlayId(null)
     projects.open(id).catch(onError)
@@ -238,7 +249,7 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
       onTarget={setTarget}
       onHome={() => {
         layout.closeDrawer()
-        layout.setEditing(false)
+        layout.setEditing(null)
         projects.close().catch(onError)
       }}
       onOpen={(id) => {
@@ -252,7 +263,18 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
     />
   )
 
-  const panel = project && (
+  const panel = project && layout.editing === 'chapter' && output ? (
+    <ChapterEditor
+      scene={output.scene}
+      selected={picked}
+      onSelect={setPicked}
+      onChange={(scene) => saveEdit(editScene(output, scene))}
+      onNarrationChange={changeNarration}
+      onSeek={(seconds) => player.current?.seek(seconds)}
+      cueIndex={cueIndex}
+      className={layout.panel === 'below' ? 'h-[32rem] shrink-0 rounded-xl border' : undefined}
+    />
+  ) : project && (
     <LessonPanel
       outputs={outputs}
       selected={watchingLive ? LIVE : (output?.id ?? null)}
@@ -263,7 +285,7 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
       onDelete={(id) => projects.update((p) => ({ ...p, outputs: p.outputs.filter((o) => o.id !== id) }))}
       onSeek={(seconds) => player.current?.seek(seconds)}
       editable={output?.scene.version === SCENE_VERSION}
-      onNarrationChange={changeNarration}
+      onEditChapter={() => edit('chapter')}
       className={layout.panel === 'below' ? 'h-[28rem] shrink-0 rounded-xl border' : undefined}
     />
   )
@@ -286,19 +308,35 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
               layout.narrow ? 'overflow-y-auto px-4' : 'px-6',
             )}
           >
-            {layout.editing ? (
+            {layout.editing === 'chapter' ? (
+              <header className="flex h-10 shrink-0 items-center gap-3">
+                <Pencil className="size-[18px] text-accent" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-semibold tracking-tight">Editing · {output ? chapterTitle(output.title) : ''}</p>
+                  <p className="truncate text-[13px] text-dim">
+                    Changes are saved as you make them. Use the play button below to preview.
+                  </p>
+                </div>
+                <Button variant="ghost" size="sm" onClick={() => edit('motion')} title="Theatre Studio: drag keyframes on a timeline">
+                  <SlidersHorizontal className="size-3.5" /> Fine-tune motion
+                </Button>
+                <Button variant="primary" onClick={() => edit(null)}>
+                  <Check className="size-4" /> Done
+                </Button>
+              </header>
+            ) : layout.editing === 'motion' ? (
               // Studio's toolbar sits in the top corners; keep the header clear of it.
               <header className="flex h-10 shrink-0 items-center gap-3 pr-36 pl-10">
                 <SlidersHorizontal className="size-[18px] text-accent" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-semibold tracking-tight">
-                    Editing keyframes · {output ? chapterTitle(output.title) : ''}
+                    Fine-tuning motion · {output ? chapterTitle(output.title) : ''}
                   </p>
                   <p className="truncate text-[13px] text-dim">
-                    Drag keyframes in the timeline below; click an element in the outline to see its values.
+                    Drag keyframes in the timeline below. Editing the chapter again resets this fine-tuning.
                   </p>
                 </div>
-                <Button variant="primary" onClick={() => layout.setEditing(false)}>
+                <Button variant="primary" onClick={() => edit(null)}>
                   <Check className="size-4" /> Done
                 </Button>
               </header>
@@ -314,6 +352,16 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
                   />
                   <p className="truncate text-[13px] text-dim">{subtitle}</p>
                 </div>
+                {!layout.theatre && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => edit('chapter')}
+                    disabled={!output || output.scene.version !== SCENE_VERSION || watchingLive}
+                  >
+                    <Pencil className="size-3.5" /> Edit
+                  </Button>
+                )}
                 {!layout.theatre && (
                   <Button variant="secondary" size="sm" onClick={() => setShareOpen(true)} disabled={outputs.length === 0}>
                     <Share2 className="size-3.5" /> Share
@@ -360,15 +408,17 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
               onExport={setExporting}
               onError={onError}
               editing={layout.editing}
+              selected={picked}
+              onPick={setPicked}
               brand={account.brand}
-              onEditKeyframes={() => layout.setEditing(true)}
+              onEdit={edit}
               voices={voices}
               premiumLocked={!billing.features.includes('premiumVoices')}
               onVoiceChange={changeVoice}
               recording={generator.busy}
               // Stacked layout scrolls, so the player needs an explicit height: a full-width 16:9 stage plus controls.
               className={
-                layout.editing
+                layout.editing === 'motion'
                   ? STUDIO_CLEARANCE
                   : layout.narrow
                     ? 'h-[calc((100vw-2rem)*9/16+4rem)] flex-none max-sm:h-[calc((100vw-2rem)*9/16+7rem)]'

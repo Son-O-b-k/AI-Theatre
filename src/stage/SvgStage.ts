@@ -45,6 +45,10 @@ interface StageNode {
   /** The geometry last drawn, so unchanged frames skip the sketching, and the sketched line's length. */
   drawn?: string
   length?: number
+  /** Where a link or group frame is, for the editor's selection outline. */
+  box?: Rect
+  /** A wide invisible line over a link, so it is easy to click in the editor. */
+  hit?: SVGPathElement
 }
 
 export class SvgStage {
@@ -58,6 +62,9 @@ export class SvgStage {
   /** Links and groups to redraw when a shape moves. */
   private readonly dependants = new Map<string, StageNode[]>()
   private readonly logo: SVGImageElement
+  /** The chapter editor's outline around the selected element; never shown in playback or exports. */
+  private readonly selection: SVGRectElement
+  private selected: string | null = null
 
   constructor(container: HTMLElement) {
     this.svg = create('svg', {
@@ -76,7 +83,8 @@ export class SvgStage {
     this.layer = create('g')
     // A brand logo, top right, above the drawing (src/scene/brand.ts).
     this.logo = create('image', { x: STAGE.width - 236, y: 24, width: 200, height: 48, preserveAspectRatio: 'xMaxYMin meet', visibility: 'hidden' })
-    this.svg.append(this.backdrop, vignette, grid, this.groupLayer, this.linkLayer, this.layer, this.logo)
+    this.selection = create('rect', { fill: 'none', rx: 10, 'stroke-width': 2.5, 'stroke-dasharray': '7 6', visibility: 'hidden', 'pointer-events': 'none', style: 'stroke: var(--color-accent, #c8402a)' })
+    this.svg.append(this.backdrop, vignette, grid, this.groupLayer, this.linkLayer, this.layer, this.logo, this.selection)
     container.append(this.svg)
   }
 
@@ -100,6 +108,7 @@ export class SvgStage {
       if (node?.signature !== signature) {
         node?.root.remove()
         node = build(el, signature, ink)
+        node.root.setAttribute('data-id', el.id)
         this.nodes.set(el.id, node)
       }
       const dependsOn = el.kind === 'link' ? [el.from, el.to] : el.kind === 'group' ? el.contains : []
@@ -118,6 +127,8 @@ export class SvgStage {
     node.visual = visual
     node.root.setAttribute('opacity', String(visual.opacity))
     node.root.setAttribute('color', visual.color)
+    // Only what can be seen can be clicked in the editor.
+    node.root.setAttribute('pointer-events', visual.opacity < 0.05 ? 'none' : 'auto')
 
     if (node.el.kind === 'link') return this.drawLink(node)
     if (node.el.kind === 'group') return this.drawGroup(node)
@@ -125,6 +136,25 @@ export class SvgStage {
     node.draw?.(visual.draw)
     this.placements.set(id, { el: node.el, x: visual.x, y: visual.y, scale: visual.scale })
     this.dependants.get(id)?.forEach((dependant) => (dependant.el.kind === 'link' ? this.drawLink(dependant) : this.drawGroup(dependant)))
+    if (id === this.selected) this.drawSelection()
+  }
+
+  /** Outlines one element for the chapter editor, or none. */
+  select(id: string | null): void {
+    this.selected = id
+    this.drawSelection()
+  }
+
+  private drawSelection(): void {
+    const node = this.selected ? this.nodes.get(this.selected) : undefined
+    const placed = this.selected ? this.placements.get(this.selected) : undefined
+    const rect = node?.box ?? (placed ? bounds(placed) : null)
+    if (!rect) {
+      this.selection.setAttribute('visibility', 'hidden')
+      return
+    }
+    const pad = 10
+    setAttributes(this.selection, { x: rect.x0 - pad, y: rect.y0 - pad, width: rect.x1 - rect.x0 + pad * 2, height: rect.y1 - rect.y0 + pad * 2, visibility: 'visible' })
   }
 
   destroy(): void {
@@ -142,7 +172,11 @@ export class SvgStage {
       node.drawn = geometry.d
       const d = sketchLine(geometry.d, seedOf(el.id))
       node.stroke.setAttribute('d', d)
+      node.hit?.setAttribute('d', geometry.d)
       node.length = pathLength(d)
+      const points = [0, 0.25, 0.5, 0.75, 1].map((u) => geometry.at(u))
+      node.box = { x0: Math.min(...points.map((p) => p.x)), y0: Math.min(...points.map((p) => p.y)), x1: Math.max(...points.map((p) => p.x)), y1: Math.max(...points.map((p) => p.y)) }
+      if (el.id === this.selected) this.drawSelection()
       if (node.head) placeHead(node.head, geometry.at(0.97), geometry.at(1))
       if (node.label) {
         const mid = geometry.at(0.5)
@@ -171,6 +205,8 @@ export class SvgStage {
     const outline = roundedRect(frame.x0, frame.y0, frame.x1 - frame.x0, frame.y1 - frame.y0, 22 * scale)
     if (node.drawn === outline) return
     node.drawn = outline
+    node.box = frame
+    if (el.id === this.selected) this.drawSelection()
     node.stroke.setAttribute('d', sketchLine(outline, seedOf(el.id)))
     ;(node.root.firstChild as SVGPathElement).setAttribute('d', outline)
     if (node.label) setAttributes(node.label, { x: frame.x0 + 22 * scale, y: frame.y0 + (GROUP.label * scale) / 2 + 8 * scale, 'font-size': GROUP.text * scale })
@@ -195,7 +231,8 @@ function build(el: SceneElement, signature: string, ink: Ink): StageNode {
       'stroke-linejoin': 'round',
       ...(el.dashed && { 'stroke-dasharray': '10 9' }),
     })
-    root.append(node.stroke)
+    node.hit = create('path', { fill: 'none', stroke: 'transparent', 'stroke-width': 18 })
+    root.append(node.stroke, node.hit)
     if (el.arrow) {
       node.head = create('path', { d: 'M -13 -7.5 L 1 0 L -13 7.5 Z', fill: 'currentColor', stroke: 'currentColor', 'stroke-width': 2, 'stroke-linejoin': 'round' })
       root.append(node.head)

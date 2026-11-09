@@ -9,6 +9,7 @@ import { PLAN_SYSTEM, planMessages, SCENE_SYSTEM } from '../ai/prompts'
 import { BROWSER_VOICE, unrecorded, withNarration } from '../narration'
 import { editNarration, newOutput } from '../project'
 import { checkScene } from './check'
+import { addAction, describeAction, insertBeat, removeAction, removeElement, updateElement } from './edit'
 import { compile, speechSeconds } from './compile'
 import { applyOp, emptyScene, finalizeScene, sceneToLines } from './scene'
 import { parseOp, type Scene } from './schema'
@@ -324,6 +325,46 @@ describe('lesson rules', () => {
   test('the AI is told the rules', () => {
     assert.match(PLAN_SYSTEM, new RegExp(`up to ${LESSON_RULES.chapters.max} chapters`))
     assert.match(SCENE_SYSTEM, new RegExp(`At most ${LESSON_RULES.shapesPerBoard.usual} shapes per board`))
+  })
+})
+
+describe('chapter editor', () => {
+  const lesson = () => build(CASES['the prompt example']).scene
+
+  test('actions are described in plain words, by name rather than id', () => {
+    const scene = lesson()
+    const said = scene.beats.flatMap((beat) => beat.actions.map((action) => describeAction(scene, action)))
+    assert.ok(said.includes('Shows The, cat and sat'), said.join('\n'))
+    assert.ok(said.includes('Sends a dot along “strong” arrow'), said.join('\n'))
+    assert.ok(said.includes('Turns cat amber'), said.join('\n'))
+  })
+
+  test('changing a label is checked like AI output, and a box grows to fit it', () => {
+    const scene = lesson()
+    const edited = updateElement(scene, 'w2', { label: 'a much longer label here' })
+    const box = edited.elements.find((el) => el.id === 'w2') as { w: number; label: string }
+    assert.equal(box.label, 'a much longer label here')
+    assert.ok(box.w > 170)
+    assert.throws(() => updateElement(scene, 'w2', { w: 'wide' }), /w:/)
+  })
+
+  test('removing a shape removes its arrows and every step that mentions them', () => {
+    const scene = removeElement(lesson(), 'cat')
+    assert.ok(!scene.elements.some((el) => el.id === 'cat' || el.id === 'a1'))
+    const mentioned = JSON.stringify(scene.beats)
+    assert.doesNotMatch(mentioned, /"cat"|"a1"/)
+    const { scene: again } = build(fromJsonLines(sceneToLines(finalizeScene(scene))))
+    assert.deepEqual(geometryProblems(again), [])
+  })
+
+  test('steps and what happens in them can be added, and a dot is made for a new trip', () => {
+    let scene = insertBeat(lesson(), 0, 'A new line.')
+    assert.equal(scene.beats[1].say, 'A new line.')
+    assert.equal(scene.beats[1].board, scene.beats[0].board)
+    scene = addAction(scene, 1, { type: 'travel', token: 'a2-dot', along: 'a2', color: 'green', reverse: false })
+    assert.equal(scene.elements.find((el) => el.id === 'a2-dot')?.kind, 'dot')
+    scene = removeAction(scene, 1, 0)
+    assert.deepEqual(scene.beats[1].actions, [])
   })
 })
 

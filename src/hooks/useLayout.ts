@@ -4,12 +4,16 @@
 //   ≥ 1600px   library and lesson panel beside the stage, each collapsible
 //   1200–1600  library becomes a slide-over drawer; lesson panel stays beside the stage
 //   < 1200     lesson panel moves below the player
-// Theatre mode hides everything but the player; keyframe editing also makes room for Studio's panels.
+// Theatre mode hides everything but the player. The chapter editor takes the lesson panel's place;
+// fine-tuning motion hides both panels and makes room for Studio's.
 // These keep the stage at roughly 880px or more on laptops, so 22px labels render at 15px or more.
 
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 
 export type Placement = 'inline' | 'drawer' | 'below' | 'hidden'
+
+/** Which editor is open: the chapter editor, or Theatre Studio for fine-tuning motion. */
+export type Editing = 'chapter' | 'motion' | null
 
 function useMediaQuery(query: string): boolean {
   return useSyncExternalStore(
@@ -54,7 +58,7 @@ export function useLayout() {
   const [panelOpen, setPanelOpen] = usePreference('ai-theatre:panel', true)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [theatre, setTheatre] = useState(false)
-  const [editing, setEditing] = useState(false)
+  const [editing, setEditing] = useState<Editing>(null)
 
   useEffect(() => {
     if (wide) setDrawerOpen(false)
@@ -70,9 +74,10 @@ export function useLayout() {
     return () => document.removeEventListener('keydown', onKey)
   }, [])
 
-  const focused = theatre || editing
+  const focused = theatre || editing !== null
   const sidebar: Placement = focused ? 'hidden' : wide && sidebarPinned ? 'inline' : drawerOpen ? 'drawer' : 'hidden'
-  const panel: Placement = focused ? 'hidden' : narrow ? 'below' : panelOpen ? 'inline' : 'hidden'
+  const panel: Placement =
+    theatre || editing === 'motion' ? 'hidden' : narrow ? 'below' : panelOpen || editing === 'chapter' ? 'inline' : 'hidden'
 
   return {
     narrow,
