@@ -9,6 +9,7 @@ import { JobError } from './lessons/jobs'
 import { loadBillingProvider } from './billing/providers'
 import { DevBillingProvider } from './billing/providers/dev'
 import { Billing, BillingError } from './billing/service'
+import { sweepClipsDaily } from './clips'
 import { loadProviderConfigs } from './config'
 import { openDb } from './db'
 import { createMailer } from './email'
@@ -41,6 +42,7 @@ const jobs = new Jobs(db, billing, providers)
 await jobs.recover()
 const exports = new Exports(db, billing)
 await exports.recover()
+sweepClipsDaily(db)
 
 const app = new Hono()
 app.route('/api/auth', authRoutes(deps))

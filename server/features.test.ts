@@ -3,7 +3,7 @@
 
 import assert from 'node:assert/strict'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, utimes, writeFile } from 'node:fs/promises'
 import { createServer, type Server } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -30,6 +30,7 @@ import type { Db } from './db'
 import { exportScorm } from './exports/scorm'
 import { exportVideo } from './exports/video'
 import { zip } from './exports/zip'
+import { sweepClips } from './clips'
 import { decrypt, encrypt } from './secrets'
 import { revokeShare, shareProject, sharedLesson } from './shares'
 import { speak, voices } from './speech'
@@ -104,6 +105,24 @@ describe('plan features', () => {
     const state = JSON.stringify(brandTheatreState(output.theatreState, brand))
     assert.ok(state.includes(JSON.stringify(hexToRgba('#0a7d4f')).slice(1, -1)), 'the blue highlight keyframe became the main colour')
     assert.ok(!state.includes(JSON.stringify(hexToRgba(PALETTE.blue)).slice(1, -1)))
+  })
+
+  test('narration clips nothing uses any more are removed, but not ones being recorded now', async () => {
+    const speech = join(process.env.DATA_DIR!, 'speech')
+    await mkdir(speech, { recursive: true })
+    const clip = (n: number) => `${String(n).repeat(16)}.wav`
+    const old = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000)
+    for (const n of [1, 2, 3, 4]) {
+      await writeFile(join(speech, clip(n)), 'RIFF')
+      if (n !== 4) await utimes(join(speech, clip(n)), old, old)
+    }
+    // 1 is in a lesson, 2 in a chapter not yet picked up, 3 in nothing (old), 4 in nothing (just recorded).
+    await store.writeProject(owner.workspaceId, 'p1', { id: 'p1', name: 'x', outputs: [{ audio: `/api/speech/${clip(1)}` }] })
+    await db.run("INSERT INTO jobs (id, workspace_id, project_id, mode, prompt, status, created_at) VALUES ('j1', ?, 'p1', 'teach', 'q', 'done', '')", owner.workspaceId)
+    await db.run("INSERT INTO job_outputs (id, job_id, workspace_id, project_id, output, created_at) VALUES ('o1', 'j1', ?, 'p1', ?, '')", owner.workspaceId, JSON.stringify({ url: `/api/speech/${clip(2)}` }))
+
+    assert.equal((await sweepClips(db)).removed, 1)
+    assert.deepEqual((await readdir(speech)).sort(), [clip(1), clip(2), clip(4)])
   })
 
   test('secrets are encrypted, and tampering is detected', () => {
