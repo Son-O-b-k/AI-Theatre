@@ -1,4 +1,4 @@
-import { ArrowUp, Film, GraduationCap, Loader2, PenLine, Square, type LucideIcon } from 'lucide-react'
+import { ArrowUp, Film, Globe, GraduationCap, Loader2, PenLine, Square, type LucideIcon } from 'lucide-react'
 import { useLayoutEffect, useRef } from 'react'
 import { DEFAULT_LANGUAGE, LANGUAGES } from '../../shared/languages'
 import type { Mode } from '../hooks/useGenerator'
@@ -24,8 +24,11 @@ interface Props {
   status: string
   warnings: string[]
   disabled?: boolean
-  /** The language picker, shown for new lessons; other languages are a Pro feature. */
-  language?: { value: string; onChange(value: string): void; locked: boolean }
+  /**
+   * The language picker, shown for new lessons. Other languages are a Pro feature (`locked`) and need
+   * premium voices set up on the server (`available`).
+   */
+  language?: { value: string; onChange(value: string): void; locked: boolean; available: boolean }
   onSubmit(mode: Mode, prompt: string): void
   onStop(): void
 }
@@ -108,21 +111,35 @@ export function PromptBox({
           })}
 
           {language && current.mode === 'teach' && (
-            <select
-              value={language.value}
-              onChange={(e) => language.onChange(e.target.value)}
-              disabled={busy}
-              aria-label="Lesson language"
-              title={language.locked ? 'Other languages are part of the Pro plan' : 'The language the lesson is written and narrated in'}
-              className="h-8 max-w-36 cursor-pointer rounded-lg bg-transparent px-1.5 text-[13px] text-dim outline-none hover:bg-tint hover:text-ink"
+            <label
+              className="flex h-8 items-center gap-1.5 rounded-lg border border-line px-2 text-[13px] text-dim transition focus-within:border-accent/60 hover:border-line-strong hover:text-ink"
+              title={
+                !language.available
+                  ? 'Lessons in other languages are not available yet'
+                  : language.locked
+                    ? 'Other languages are part of the Pro plan'
+                    : 'The language the lesson is written and narrated in'
+              }
             >
-              {LANGUAGES.map((name) => (
-                <option key={name} value={name} disabled={language.locked && name !== DEFAULT_LANGUAGE}>
-                  {name}
-                  {language.locked && name !== DEFAULT_LANGUAGE ? ' (Pro)' : ''}
-                </option>
-              ))}
-            </select>
+              <Globe className="size-3.5 shrink-0" />
+              <select
+                value={language.value}
+                onChange={(e) => language.onChange(e.target.value)}
+                disabled={busy}
+                aria-label="Lesson language"
+                className="max-w-32 cursor-pointer bg-transparent outline-none"
+              >
+                {LANGUAGES.map((name) => {
+                  const why = name === DEFAULT_LANGUAGE ? '' : !language.available ? ' (not available yet)' : language.locked ? ' (Pro)' : ''
+                  return (
+                    <option key={name} value={name} disabled={why !== ''}>
+                      {name}
+                      {why}
+                    </option>
+                  )
+                })}
+              </select>
+            </label>
           )}
 
           <span className="min-w-0 flex-1" />

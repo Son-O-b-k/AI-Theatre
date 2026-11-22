@@ -83,6 +83,13 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
   const layout = useLayout()
   const { providers, target, setTarget, refresh: refreshProviders } = useProviders(onError)
   const { voices, voice, setVoice } = useVoice()
+  /** Lessons in other languages are narrated by premium voices, which the server offers only when set up. */
+  const otherLanguages = voices.some((v) => v.premium)
+  const languageLocked = !account.billing.features.includes('premiumVoices')
+  // A language chosen earlier that can no longer be used (plan or server changed) falls back to English.
+  useEffect(() => {
+    if (language !== DEFAULT_LANGUAGE && (languageLocked || (voices.length > 0 && !otherLanguages))) setLanguage(DEFAULT_LANGUAGE)
+  }, [language, languageLocked, otherLanguages, voices.length])
   const { billing } = account
   const { project } = projects
   const outputs = project?.outputs ?? []
@@ -451,7 +458,7 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
                 busy={generator.busy}
                 status={generator.status || 'Generating…'}
                 warnings={generator.warnings}
-                language={{ value: language, onChange: setLanguage, locked: !billing.features.includes('premiumVoices') }}
+                language={{ value: language, onChange: setLanguage, locked: !billing.features.includes('premiumVoices'), available: otherLanguages }}
                 onSubmit={run}
                 onStop={generator.stop}
               />
@@ -470,7 +477,7 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
             busy={generator.busy}
             status={generator.status}
             warnings={generator.warnings}
-            language={{ value: language, onChange: setLanguage, locked: !billing.features.includes('premiumVoices') }}
+            language={{ value: language, onChange: setLanguage, locked: !billing.features.includes('premiumVoices'), available: otherLanguages }}
             onRun={run}
             onStop={generator.stop}
             onOpen={openProject}
