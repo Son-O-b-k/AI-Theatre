@@ -188,6 +188,10 @@ export interface ExportStatus {
   /** 0..1 while running. */
   progress: number
   error?: string
+  projectId: string
+  /** The lesson's name, for "Your video of … is ready". */
+  projectName: string
+  createdAt: string
 }
 
 /** A workspace's own AI provider. The key is stored encrypted and never returned. */

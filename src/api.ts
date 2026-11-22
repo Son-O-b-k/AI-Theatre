@@ -72,6 +72,9 @@ export const api = {
 
   startExport: (projectId: string, kind: 'mp4' | 'scorm') => call<ExportStatus>('/api/exports', json('POST', { projectId, kind })),
   exportStatus: (id: string) => call<ExportStatus>(`/api/exports/${id}`),
+  latestExport: (projectId: string, kind: 'mp4' | 'scorm') =>
+    call<ExportStatus | null>(`/api/exports/latest?projectId=${encodeURIComponent(projectId)}&kind=${kind}`),
+  activeExport: () => call<ExportStatus | null>('/api/exports/active'),
 
   workspaceProviders: () => call<WorkspaceProvider[]>('/api/workspace-providers'),
   addWorkspaceProvider: (provider: NewWorkspaceProvider) => call<WorkspaceProvider>('/api/workspace-providers', json('POST', provider)),

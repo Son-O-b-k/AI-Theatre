@@ -17,6 +17,16 @@ export function exportRoutes({ db }: Deps, exports: Exports) {
     return c.json(await exports.start(c.var.account, projectId, kind, captions))
   })
 
+  // The lesson's latest export of a kind (or null), and the one running in the workspace (or null).
+  app.get('/latest', async (c) => {
+    const { projectId, kind } = z
+      .object({ projectId: z.string().regex(/^[\w-]{1,64}$/), kind: z.enum(['mp4', 'scorm']) })
+      .parse(c.req.query())
+    return c.json(await exports.latest(c.var.account.workspaceId, projectId, kind))
+  })
+
+  app.get('/active', (c) => c.json(exports.active(c.var.account.workspaceId)))
+
   app.get('/:id', async (c) => c.json(await exports.status(c.var.account.workspaceId, c.req.param('id'))))
 
   app.get('/:id/file', async (c) => {

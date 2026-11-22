@@ -15,6 +15,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AccountInfo } from '../shared/protocol'
 import { api, ApiError } from './api'
 import { BillingDialog } from './components/BillingDialog'
+import { ExportCard, useBackgroundExport } from './components/ExportCard'
 import { ExportDialog } from './components/ExportDialog'
 import { ShareDialog } from './components/ShareDialog'
 import { WorkspaceDialog, type WorkspaceTab } from './components/workspace/WorkspaceDialog'
@@ -72,6 +73,7 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
   const [shareOpen, setShareOpen] = useState(false)
   const [language, setLanguage] = useState<string>(DEFAULT_LANGUAGE)
   const [exporting, setExporting] = useState<'mp4' | 'scorm' | null>(null)
+  const background = useBackgroundExport()
   const onError = useCallback((e: unknown) => {
     setError(e instanceof Error ? e.message : String(e))
     setLimitReached(e instanceof ApiError && e.status === 402)
@@ -525,9 +527,13 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
             setExporting(null)
             setBillingOpen(true)
           }}
-          onClose={() => setExporting(null)}
+          onClose={(running) => {
+            setExporting(null)
+            if (running) background.track(running)
+          }}
         />
       )}
+      {background.job && !exporting && <ExportCard job={background.job} onDismiss={background.dismiss} />}
       {shareOpen && project && (
         <ShareDialog
           projectId={project.id}

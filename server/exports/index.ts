@@ -57,7 +57,7 @@ export class Exports {
       "INSERT INTO exports (id, workspace_id, project_id, kind, status, file, created_at) VALUES (?, ?, ?, ?, 'running', ?, ?)",
       id, workspaceId, projectId, kind, file, now(),
     )
-    const status: ExportStatus & { workspaceId: string } = { id, kind, status: 'running', progress: 0, workspaceId }
+    const status: ExportStatus & { workspaceId: string } = { id, kind, status: 'running', progress: 0, workspaceId, projectId, projectName: project.name, createdAt: now() }
     this.running.set(id, status)
 
     const work = async () => {
@@ -97,13 +97,40 @@ export class Exports {
   async status(workspaceId: string, id: string): Promise<ExportStatus> {
     const live = this.running.get(id)
     if (live?.workspaceId === workspaceId) return this.public(live)
-    const row = await this.db.get<{ id: string; kind: ExportKind; status: ExportStatus['status']; error: string | null }>(
-      'SELECT id, kind, status, error FROM exports WHERE id = ? AND workspace_id = ?',
+    const row = await this.db.get<{ id: string; kind: ExportKind; status: ExportStatus['status']; error: string | null; project_id: string; created_at: string }>(
+      'SELECT id, kind, status, error, project_id, created_at FROM exports WHERE id = ? AND workspace_id = ?',
       id,
       workspaceId,
     )
     if (!row) throw new HTTPException(404, { message: 'Export not found' })
-    return { id: row.id, kind: row.kind, status: row.status, progress: row.status === 'done' ? 1 : 0, error: row.error ?? undefined }
+    const project = (await store.readProject(workspaceId, row.project_id)) as Project | null
+    return {
+      id: row.id,
+      kind: row.kind,
+      status: row.status,
+      progress: row.status === 'done' ? 1 : 0,
+      error: row.error ?? undefined,
+      projectId: row.project_id,
+      projectName: project?.name ?? 'Lesson',
+      createdAt: row.created_at,
+    }
+  }
+
+  /** The lesson's most recent export of this kind, so the export dialog can pick up where it was. */
+  async latest(workspaceId: string, projectId: string, kind: ExportKind): Promise<ExportStatus | null> {
+    const row = await this.db.get<{ id: string }>(
+      'SELECT id FROM exports WHERE workspace_id = ? AND project_id = ? AND kind = ? ORDER BY created_at DESC LIMIT 1',
+      workspaceId,
+      projectId,
+      kind,
+    )
+    return row ? this.status(workspaceId, row.id) : null
+  }
+
+  /** The export running in the workspace (there is at most one), for the app's progress card. */
+  active(workspaceId: string): ExportStatus | null {
+    const live = [...this.running.values()].find((e) => e.workspaceId === workspaceId && e.status === 'running')
+    return live ? this.public(live) : null
   }
 
   /** The finished file and a name to save it as. */
@@ -132,7 +159,7 @@ export class Exports {
     }
   }
 
-  private public({ id, kind, status, progress, error }: ExportStatus): ExportStatus {
-    return { id, kind, status, progress, error }
+  private public({ id, kind, status, progress, error, projectId, projectName, createdAt }: ExportStatus): ExportStatus {
+    return { id, kind, status, progress, error, projectId, projectName, createdAt }
   }
 }
