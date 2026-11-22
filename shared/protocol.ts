@@ -4,10 +4,17 @@ import type { Feature, Interval, PlanId } from './plans'
 
 export type ProviderKind = 'openai' | 'anthropic' | 'ollama'
 
+/** Where a model comes from: the plan's default, another model the plan includes, or the workspace's own key. */
+export type ProviderSource = 'default' | 'included' | 'own'
+
+/** The id that means "the server's default model" (AI_DEFAULT_PROVIDER / AI_DEFAULT_MODEL in .env). */
+export const DEFAULT_PROVIDER_ID = 'default'
+
 export interface ProviderInfo {
   id: string
   label: string
   kind: ProviderKind
+  source: ProviderSource
   models: string[]
   /** Set when the model list could not be fetched (provider offline, missing key, ...). */
   error?: string
@@ -51,6 +58,10 @@ export interface BillingSummary {
   tokenAllowance: number
   tokensUsed: number
   canGenerate: boolean
+  /** Tokens a month with the workspace's own AI key; null when unlimited. */
+  ownKeyAllowance: number | null
+  ownKeyTokensUsed: number
+  canGenerateOwnKey: boolean
   /** What the plan unlocks beyond lessons and seats. */
   features: Feature[]
   subscription: {
@@ -179,7 +190,7 @@ export interface ExportStatus {
   error?: string
 }
 
-/** A workspace's own AI provider (Teams). The key is stored encrypted and never returned. */
+/** A workspace's own AI provider. The key is stored encrypted and never returned. */
 export interface WorkspaceProvider {
   id: string
   label: string
@@ -194,6 +205,12 @@ export interface NewWorkspaceProvider {
   kind: ProviderKind
   baseUrl?: string
   apiKey?: string
+  /** Models to offer; empty offers every model the provider lists. */
+  models?: string[]
+}
+
+/** `POST /api/workspace-providers/check`: whether a key works, and the models it can use. */
+export interface ProviderCheck {
   models: string[]
 }
 

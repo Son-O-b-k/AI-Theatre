@@ -43,7 +43,11 @@ The landing page is at `/` (`src/landing/`) and the app at `/app`. The landing p
 | `ollama`    | the same adapter, defaulting to `http://localhost:11434/v1` with no key                 |
 | `anthropic` | the Anthropic Messages API                                                             |
 
-Each entry accepts `id`, `kind`, and optionally `label`, `baseUrl`, `apiKey` (a literal key or `env:NAME`), `models` (a fixed list; otherwise the provider's model list is fetched) and `maxTokens`. Keys stay on the server and never reach the browser.
+Each entry accepts `id`, `kind`, and optionally `label`, `baseUrl`, `apiKey` (a literal key or `env:NAME`), `models` (a fixed list; otherwise the provider's model list is fetched) and `maxTokens`. Keys stay on the server and never reach the browser. A hosted provider whose key is missing is not offered, and one that does not answer is left out of the model list.
+
+**Default model.** People who do not choose a model get `AI_DEFAULT_PROVIDER` (an `id` from this file) with `AI_DEFAULT_MODEL`, set in `.env`; unset, the first provider that answers and its first model. People see it only as **AI Theatre**: the provider and model behind it are not shown, and the file's other providers are not offered to them. Lessons on it use the plan's monthly lessons.
+
+**Their own key.** Under **Workspace → AI models** (or **+ Add your own key…** in the model list) a workspace owner picks a provider, pastes a key and presses **Connect**: the key is tried and the models it can use are listed. They can offer every model (new ones appear by themselves) or choose some. The model list then shows **AI Theatre** (included in the plan) and **Your keys**, and says under it who pays for the next lesson.
 
 ## How it works
 
@@ -100,7 +104,7 @@ Each plan lists what it `allows` in `shared/plans.ts`; the server checks that li
 | MP4 video with captions | Creator, Pro, Teams | `server/exports/video.ts`: frames drawn by the app's own `SvgStage` on a server-side DOM, sampled from the Theatre state (Studio edits included), rasterised with resvg in parallel worker threads, encoded with ffmpeg; narration mixed from the recorded clips |
 | Premium voices and other languages | Pro, Teams | `server/speech.ts` (any OpenAI-compatible speech API, set in `.env`), `shared/languages.ts` |
 | Brand colours and logo | Pro, Teams | `server/brand.ts`, `src/scene/brand.ts`: applied when lessons are shown, not stored in them |
-| Your own AI model and keys | Teams | `server/workspace-providers.ts`: keys encrypted (`server/secrets.ts`); lessons on them do not use the allowance |
+| Your own AI key (OpenAI, Anthropic, Gemini, OpenRouter, Groq, Ollama, any OpenAI-compatible API) | All plans; Free 20 and Creator 150 lessons a month on it, Pro and Teams unlimited (`ownKeyLessons` in `shared/plans.ts`) | `server/workspace-providers.ts`: the key is checked and its models listed before saving; keys encrypted (`server/secrets.ts`); lessons on them use the own-key allowance, not the plan's lessons; in production, addresses on private networks are refused unless `ALLOW_PRIVATE_AI_URLS=true` |
 | SCORM 1.2 export | Teams | `server/exports/scorm.ts`: the standalone viewer (`npm run build` makes `dist-player/player.js`), lesson and media in one zip; reports completion |
 | Single sign-on | Teams | `server/sso.ts`: OpenID Connect (Google Workspace, Microsoft Entra, Okta…), code flow with PKCE, verified ID tokens, accounts and seats on first sign-in, optional "require SSO" |
 

@@ -17,7 +17,7 @@ import { api, ApiError } from './api'
 import { BillingDialog } from './components/BillingDialog'
 import { ExportDialog } from './components/ExportDialog'
 import { ShareDialog } from './components/ShareDialog'
-import { WorkspaceDialog } from './components/workspace/WorkspaceDialog'
+import { WorkspaceDialog, type WorkspaceTab } from './components/workspace/WorkspaceDialog'
 import { Home } from './components/Home'
 import { ChapterEditor } from './components/editor/ChapterEditor'
 import { chapterTitle, LessonPanel, LIVE } from './components/LessonPanel'
@@ -68,7 +68,7 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
   const [limitReached, setLimitReached] = useState(false)
   const [notice, setNotice] = useState<string | null>(initialNotice)
   const [billingOpen, setBillingOpen] = useState(false)
-  const [teamOpen, setTeamOpen] = useState(false)
+  const [teamOpen, setTeamOpen] = useState<WorkspaceTab | false>(false)
   const [shareOpen, setShareOpen] = useState(false)
   const [language, setLanguage] = useState<string>(DEFAULT_LANGUAGE)
   const [exporting, setExporting] = useState<'mp4' | 'scorm' | null>(null)
@@ -238,7 +238,11 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
       onSignOut={onSignOut}
       onOpenTeam={() => {
         layout.closeDrawer()
-        setTeamOpen(true)
+        setTeamOpen('team')
+      }}
+      onAddKey={() => {
+        layout.closeDrawer()
+        setTeamOpen('models')
       }}
       onSwitchWorkspace={(id) => api.switchWorkspace(id).then(() => location.assign('/app'), onError)}
       onResendVerification={() => api.resendVerification().then(() => setNotice(`We sent a new link to ${account.email}.`), onError)}
@@ -538,6 +542,7 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
       {teamOpen && (
         <WorkspaceDialog
           account={account}
+          initialTab={teamOpen}
           onChanged={onAccountChange}
           onProvidersChanged={refreshProviders}
           onSeePlans={() => {

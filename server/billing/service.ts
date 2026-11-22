@@ -24,7 +24,8 @@ export class Billing {
 
   async entitlements(workspaceId: string, at = new Date()): Promise<Entitlements> {
     const plan = effectivePlan(await repo.subscriptionFor(this.db, workspaceId), at)
-    return entitlements(plan, await repo.tokensUsedSince(this.db, workspaceId, periodStart(at)))
+    const since = periodStart(at)
+    return entitlements(plan, await repo.tokensUsedSince(this.db, workspaceId, since), await repo.ownKeyTokensUsedSince(this.db, workspaceId, since))
   }
 
   async summary(workspaceId: string): Promise<BillingSummary> {

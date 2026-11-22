@@ -11,7 +11,7 @@ import type { Db } from '../db'
 import { freshDb } from '../test-db'
 import { DevBillingProvider } from './providers/dev'
 import { LemonSqueezyProvider } from './providers/lemonsqueezy'
-import { subscriptionFor } from './repo'
+import { OWN_KEY_USAGE, subscriptionFor } from './repo'
 import { Billing, BillingError } from './service'
 
 const later = (iso: string, days: number) => new Date(Date.parse(iso) + days * 86_400_000)
@@ -43,9 +43,19 @@ describe('billing', () => {
 
   test('a new workspace is on Free and stops generating when its allowance is used', async () => {
     assert.equal((await billing.entitlements(account.workspaceId)).plan, 'free')
-    assert.deepEqual((await billing.entitlements(account.workspaceId)).features, [])
+    assert.deepEqual((await billing.entitlements(account.workspaceId)).features, ['ownProviders'])
     await billing.recordUsage(account.workspaceId, 'chat', 5 * LESSON_TOKENS)
     assert.equal((await billing.entitlements(account.workspaceId)).canGenerate, false)
+    assert.equal((await billing.entitlements(account.workspaceId)).canGenerateOwnKey, true, 'their own key still works')
+  })
+
+  test('lessons on their own key have a separate cap on Free, and none on Pro', async () => {
+    await billing.recordUsage(account.workspaceId, OWN_KEY_USAGE, 20 * LESSON_TOKENS)
+    const free = await billing.entitlements(account.workspaceId)
+    assert.deepEqual([free.tokensUsed, free.ownKeyTokensUsed, free.canGenerate, free.canGenerateOwnKey], [0, 20 * LESSON_TOKENS, true, false])
+    await subscribe('pro', 'month')
+    const pro = await billing.entitlements(account.workspaceId)
+    assert.deepEqual([pro.ownKeyAllowance, pro.canGenerateOwnKey], [null, true])
   })
 
   test('checkout creates the subscription from the webhook, with its discount code', async () => {
@@ -53,7 +63,7 @@ describe('billing', () => {
     assert.equal(s.plan, 'creator')
     assert.equal(s.discountCode, 'LAUNCH50')
     const e = (await billing.entitlements(account.workspaceId))
-    assert.deepEqual([e.plan, e.features, e.tokenAllowance], ['creator', ['shareLinks', 'videoExport'], 30 * LESSON_TOKENS])
+    assert.deepEqual([e.plan, e.features, e.tokenAllowance], ['creator', ['ownProviders', 'shareLinks', 'videoExport'], 30 * LESSON_TOKENS])
   })
 
   test('checkout needs a confirmed email and is for owners of free workspaces', async () => {

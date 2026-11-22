@@ -9,7 +9,8 @@ import { ProvidersTab } from './ProvidersTab'
 import { SsoTab } from './SsoTab'
 import { TeamTab } from './TeamTab'
 
-type Tab = 'team' | 'brand' | 'models' | 'sso'
+export type WorkspaceTab = 'team' | 'brand' | 'models' | 'sso'
+type Tab = WorkspaceTab
 
 const TABS: { id: Tab; label: string; feature?: Feature }[] = [
   { id: 'team', label: 'Team' },
@@ -20,6 +21,8 @@ const TABS: { id: Tab; label: string; feature?: Feature }[] = [
 
 interface Props {
   account: AccountInfo
+  /** The tab to open on; Team when not given. */
+  initialTab?: Tab
   onChanged(): void
   /** The model list changed (a provider was added or removed). */
   onProvidersChanged(): void
@@ -28,8 +31,8 @@ interface Props {
 }
 
 /** Workspace settings, one tab per area; tabs the plan does not include offer the plans instead. */
-export function WorkspaceDialog({ account, onChanged, onProvidersChanged, onSeePlans, onClose }: Props) {
-  const [tab, setTab] = useState<Tab>('team')
+export function WorkspaceDialog({ account, initialTab = 'team', onChanged, onProvidersChanged, onSeePlans, onClose }: Props) {
+  const [tab, setTab] = useState<Tab>(initialTab)
   const isOwner = account.workspace.role === 'owner'
   const current = TABS.find((t) => t.id === tab)!
   const locked = current.feature && !account.billing.features.includes(current.feature)
@@ -63,7 +66,7 @@ export function WorkspaceDialog({ account, onChanged, onProvidersChanged, onSeeP
       ) : tab === 'brand' ? (
         <BrandTab isOwner={isOwner} onChanged={onChanged} />
       ) : tab === 'models' ? (
-        <ProvidersTab isOwner={isOwner} onChanged={onProvidersChanged} />
+        <ProvidersTab isOwner={isOwner} plan={account.billing.plan} onChanged={onProvidersChanged} />
       ) : (
         <SsoTab isOwner={isOwner} />
       )}

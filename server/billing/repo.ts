@@ -142,6 +142,17 @@ export async function tokensUsedSince(db: Db, workspaceId: string, since: string
   return Number(row?.total ?? 0) // Postgres returns sums as text (bigint)
 }
 
+/** Tokens written with the workspace's own AI key, which have their own (larger) monthly cap. */
+export async function ownKeyTokensUsedSince(db: Db, workspaceId: string, since: string): Promise<number> {
+  const row = await db.get<{ total: number | string }>(
+    'SELECT COALESCE(SUM(tokens), 0) AS total FROM usage WHERE workspace_id = ? AND created_at >= ? AND kind = ?',
+    workspaceId,
+    since,
+    OWN_KEY_USAGE,
+  )
+  return Number(row?.total ?? 0)
+}
+
 export async function workspaceExists(db: Db, id: string): Promise<boolean> {
   return Boolean(await db.get('SELECT 1 FROM workspaces WHERE id = ?', id))
 }

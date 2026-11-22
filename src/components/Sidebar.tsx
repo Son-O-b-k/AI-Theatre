@@ -12,6 +12,8 @@ interface Props {
   account: AccountInfo
   onOpenBilling(): void
   onOpenTeam(): void
+  /** Opens the workspace's AI models, to add a key. */
+  onAddKey(): void
   onSwitchWorkspace(id: string): void
   onResendVerification(): void
   onSignOut(): void
@@ -39,7 +41,7 @@ export function timeAgo(iso: string): string {
   return relative.format(Math.round(hours / 24), 'day')
 }
 
-export function Sidebar({ account, onOpenBilling, onOpenTeam, onSwitchWorkspace, onResendVerification, onSignOut, summaries, activeId, providers, target, onTarget, onHome, onOpen, onExport, onDelete, onImport, onCollapse }: Props) {
+export function Sidebar({ account, onOpenBilling, onOpenTeam, onAddKey, onSwitchWorkspace, onResendVerification, onSignOut, summaries, activeId, providers, target, onTarget, onHome, onOpen, onExport, onDelete, onImport, onCollapse }: Props) {
   const importInput = useRef<HTMLInputElement>(null)
 
   return (
@@ -124,13 +126,28 @@ export function Sidebar({ account, onOpenBilling, onOpenTeam, onSwitchWorkspace,
         onResendVerification={onResendVerification}
         onSignOut={onSignOut}
       />
-      <ModelPicker providers={providers} target={target} onTarget={onTarget} />
+      <ModelPicker account={account} providers={providers} target={target} onTarget={onTarget} onAddKey={onAddKey} />
     </aside>
   )
 }
 
-function ModelPicker({ providers, target, onTarget }: Pick<Props, 'providers' | 'target' | 'onTarget'>) {
+const ADD_KEY = '__add-key__'
+
+/** Who pays for the next lesson with this model, in a line. */
+function paidBy(provider: ProviderInfo | undefined, account: AccountInfo): string {
+  if (!provider) return ''
+  if (provider.source !== 'own') return 'Uses your plan\'s monthly lessons.'
+  const { ownKeyAllowance, ownKeyTokensUsed } = account.billing
+  if (ownKeyAllowance === null) return 'Paid on your key. Unlimited lessons on your plan.'
+  return `Paid on your key. ${(ownKeyTokensUsed / LESSON_TOKENS).toFixed(1)} of ${ownKeyAllowance / LESSON_TOKENS} lessons used this month.`
+}
+
+function ModelPicker({ account, providers, target, onTarget, onAddKey }: Pick<Props, 'account' | 'providers' | 'target' | 'onTarget' | 'onAddKey'>) {
   const provider = providers.find((p) => p.id === target.provider)
+  const included = providers.filter((p) => p.source !== 'own')
+  const own = providers.filter((p) => p.source === 'own')
+  const canAddKey = account.billing.features.includes('ownProviders') && account.workspace.role === 'owner'
+  const control = 'h-8 w-full cursor-pointer rounded-lg border border-line bg-panel px-2 text-[13px] outline-none focus:border-accent/60'
 
   return (
     <div className="m-3 rounded-xl border border-line bg-raised p-3">
@@ -143,29 +160,59 @@ function ModelPicker({ providers, target, onTarget }: Pick<Props, 'providers' | 
       </div>
       <select
         value={target.provider}
+        aria-label="AI provider"
         onChange={(e) => {
+          if (e.target.value === ADD_KEY) return onAddKey()
           const next = providers.find((p) => p.id === e.target.value)
-          onTarget({ provider: e.target.value, model: next?.models[0] ?? '' })
+          onTarget({ provider: e.target.value, model: next?.source === 'default' ? '' : (next?.models[0] ?? '') })
         }}
-        className="h-8 w-full cursor-pointer rounded-lg border border-line bg-panel px-2 text-[13px] outline-none focus:border-accent/60"
+        className={control}
       >
-        {providers.map((p) => (
-          <option key={p.id} value={p.id}>
-            {p.label}
-          </option>
-        ))}
+        <optgroup label="Included in your plan">
+          {included.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.label}
+            </option>
+          ))}
+        </optgroup>
+        {(own.length > 0 || canAddKey) && (
+          <optgroup label="Your keys">
+            {own.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label}
+              </option>
+            ))}
+            {canAddKey && <option value={ADD_KEY}>+ Add your own key…</option>}
+          </optgroup>
+        )}
       </select>
-      <input
-        list="model-options"
-        value={target.model}
-        placeholder="Model name"
-        onChange={(e) => onTarget({ ...target, model: e.target.value })}
-        className="mt-2 h-8 w-full rounded-lg border border-line bg-panel px-2 text-[13px] outline-none focus:border-accent/60"
-      />
-      <datalist id="model-options">
-        {provider?.models.map((model) => <option key={model} value={model} />)}
-      </datalist>
-      {provider?.error && <p className="mt-2 line-clamp-2 text-xs text-danger" title={provider.error}>{provider.error}</p>}
+      {provider && provider.source !== 'default' && (
+        provider.models.length > 0 ? (
+          <select value={target.model} aria-label="Model" onChange={(e) => onTarget({ ...target, model: e.target.value })} className={cx(control, 'mt-2')}>
+            {provider.models.map((model) => (
+              <option key={model} value={model}>
+                {model}
+              </option>
+            ))}
+          </select>
+        ) : (
+          // The provider could not list its models: let the person type one.
+          <input
+            value={target.model}
+            placeholder="Model name"
+            aria-label="Model"
+            onChange={(e) => onTarget({ ...target, model: e.target.value })}
+            className={cx(control, 'mt-2 cursor-text')}
+          />
+        )
+      )}
+      {provider?.error ? (
+        <p className="mt-2 line-clamp-2 text-xs text-danger" title={provider.error}>
+          {provider.error}
+        </p>
+      ) : (
+        <p className="mt-2 text-xs text-faint">{paidBy(provider, account)}</p>
+      )}
     </div>
   )
 }

@@ -6,7 +6,7 @@
 // deliveries not yet claimed (tab closed, connection lost) are handed over next time.
 
 import { LESSON_TOKENS } from '../../shared/plans'
-import type { ChatMessage, Delivery, JobEvent, JobMode, JobRequest } from '../../shared/protocol'
+import { DEFAULT_PROVIDER_ID, type ChatMessage, type Delivery, type JobEvent, type JobMode, type JobRequest } from '../../shared/protocol'
 import { generateScene, planLesson, type Complete } from '../../src/ai/generate'
 import { DEFAULT_LANGUAGE } from '../../shared/languages'
 import { chapterMessages, inLanguage, planMessages, refineMessages, sceneMessages } from '../../src/ai/prompts'
@@ -16,7 +16,9 @@ import type { Scene } from '../../src/scene/schema'
 import type { Account } from '../accounts'
 import type { Billing } from '../billing/service'
 import { newId, now, type Db } from '../db'
+import { resolveDefault } from '../providers'
 import type { Provider } from '../providers/types'
+import { defaultModelFromEnv } from '../config'
 import * as speech from '../speech'
 import { planFor } from '../features'
 import { isWorkspaceProvider, workspaceProvider } from '../workspace-providers'
@@ -98,18 +100,31 @@ export class Jobs {
     if (request.mode === 'refine' && !request.output) throw new JobError('Choose the chapter to change.')
     const allowance = await this.billing.entitlements(workspaceId)
 
-    // The workspace's own provider (Teams) is paid for by the workspace, so it skips the allowance.
+    // The workspace's own key pays for the AI, so it uses the plan's own-key allowance instead of its lessons.
     const own = isWorkspaceProvider(request.provider)
     if (own && !allowance.features.includes('ownProviders')) {
       throw new JobError(`Your own AI provider is part of the ${planFor('ownProviders').name} plan.`, 402)
     }
-    const provider = own ? await workspaceProvider(this.db, workspaceId, request.provider) : this.providers.get(request.provider)
-    if (!provider) throw new JobError(`Unknown provider: ${request.provider}`, 404)
+    let provider: Provider | undefined
+    if (own) provider = await workspaceProvider(this.db, workspaceId, request.provider)
+    else if (request.provider === DEFAULT_PROVIDER_ID || !request.provider) {
+      // No model chosen: the server's default (AI_DEFAULT_PROVIDER / AI_DEFAULT_MODEL), at the standard rate.
+      const fallback = await resolveDefault(this.providers, defaultModelFromEnv())
+      if (!fallback) throw new JobError('No AI model is set up on the server yet. Add your own key under Workspace → AI models.', 404)
+      provider = fallback.provider
+      request = { ...request, provider: fallback.provider.id, model: fallback.model }
+    }
+    // The server's other providers are not offered to people; only through the default.
+    if (!provider) throw new JobError('That AI model is not available. Choose AI Theatre or one of your own keys.', 404)
+    if (!request.model) throw new JobError('Choose a model first.')
 
-    const left = (allowance.tokenAllowance - allowance.tokensUsed) / LESSON_TOKENS
-    if (!own && left < NEEDS[request.mode]) {
+    const allowed = own ? allowance.ownKeyAllowance : allowance.tokenAllowance
+    const used = own ? allowance.ownKeyTokensUsed : allowance.tokensUsed
+    const left = allowed === null ? Infinity : (allowed - used) / LESSON_TOKENS
+    if (left < NEEDS[request.mode]) {
       const what = request.mode === 'teach' ? 'A new lesson needs about 1 lesson' : 'This needs about a quarter of a lesson'
-      throw new JobError(`${what} of your monthly allowance, and ${Math.max(0, left).toFixed(1)} is left. Upgrade for more.`, 402)
+      const of = own ? 'of your monthly lessons with your own key' : 'of your monthly allowance'
+      throw new JobError(`${what} ${of}, and ${Math.max(0, left).toFixed(1)} is left. Upgrade for more.`, 402)
     }
 
     // Other languages and premium voices are Pro features; other languages need a premium voice.
@@ -242,7 +257,8 @@ export class Jobs {
         const outline = await planLesson(complete, inLanguage(planMessages(request.prompt), language), signal)
         const titles = outline.map((chapter) => chapter.title)
         for (const [index, chapter] of outline.entries()) {
-          if (index > 0 && !own && !(await this.billing.entitlements(job.workspaceId)).canGenerate) {
+          const left = index > 0 && (await this.billing.entitlements(job.workspaceId))
+          if (left && !(own ? left.canGenerateOwnKey : left.canGenerate)) {
             job.emit({ type: 'warning', message: `stopped after ${index} chapters: this month's allowance is used up` })
             break
           }

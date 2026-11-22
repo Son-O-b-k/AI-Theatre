@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { ModelTarget, ProviderInfo } from '../../shared/protocol'
+import { DEFAULT_PROVIDER_ID, type ModelTarget, type ProviderInfo } from '../../shared/protocol'
 import { api } from '../api'
 
 const STORAGE_KEY = 'ai-theatre:model'
@@ -11,7 +11,16 @@ function loadTarget(): ModelTarget {
   } catch {
     // Storage can be unavailable (private mode); fall back to the default.
   }
-  return { provider: '', model: '' }
+  return { provider: DEFAULT_PROVIDER_ID, model: '' }
+}
+
+/** The saved choice if it still exists; otherwise the default model, which needs no choosing. */
+function reconcile(current: ModelTarget, list: ProviderInfo[]): ModelTarget {
+  const provider = list.find((p) => p.id === current.provider)
+  if (!provider) return { provider: DEFAULT_PROVIDER_ID, model: '' }
+  if (provider.source === 'default') return { provider: provider.id, model: '' }
+  if (provider.models.length > 0 && !provider.models.includes(current.model)) return { provider: provider.id, model: provider.models[0] }
+  return current
 }
 
 export function useProviders(onError: (error: unknown) => void) {
@@ -23,11 +32,7 @@ export function useProviders(onError: (error: unknown) => void) {
       .providers()
       .then((list) => {
         setProviders(list)
-        setTargetState((current) => {
-          if (list.some((p) => p.id === current.provider)) return current
-          const first = list.find((p) => p.models.length > 0) ?? list[0]
-          return first ? { provider: first.id, model: first.models[0] ?? '' } : current
-        })
+        setTargetState((current) => reconcile(current, list))
       })
       .catch(onError)
   }, [onError])

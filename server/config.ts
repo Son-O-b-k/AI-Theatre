@@ -25,7 +25,24 @@ export async function loadProviderConfigs(): Promise<ProviderConfig[]> {
   const config = ConfigSchema.parse(JSON.parse(await readFile(file, 'utf8')))
   console.log(`Loaded ${config.providers.length} providers from ${file}`)
 
-  return config.providers.map((provider) => ({ ...provider, apiKey: resolveSecret(provider.apiKey) }))
+  // A provider that names a key (e.g. env:OPENAI_API_KEY) cannot work while that key is empty, so it
+  // is not offered. One that names none (Ollama, a local server) is offered as it is.
+  const usable = config.providers.filter((provider) => !provider.apiKey || resolveSecret(provider.apiKey))
+  for (const provider of config.providers) if (!usable.includes(provider)) console.log(`AI provider "${provider.id}" has no API key; not offered`)
+  return usable.map((provider) => ({ ...provider, apiKey: resolveSecret(provider.apiKey) }))
+}
+
+/**
+ * The model used when a person has not chosen one: AI_DEFAULT_PROVIDER (an id from providers.json)
+ * and AI_DEFAULT_MODEL in .env. Unset, the first provider and the first model it lists are used.
+ */
+export interface DefaultModel {
+  provider?: string
+  model?: string
+}
+
+export function defaultModelFromEnv(): DefaultModel {
+  return { provider: process.env.AI_DEFAULT_PROVIDER || undefined, model: process.env.AI_DEFAULT_MODEL || undefined }
 }
 
 /** A literal value, or `env:NAME` to read it from the environment. */

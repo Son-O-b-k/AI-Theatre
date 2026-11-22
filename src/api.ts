@@ -17,6 +17,7 @@ import type {
   VoiceInfo,
   WorkspaceProvider,
   NewWorkspaceProvider,
+  ProviderCheck,
 } from '../shared/protocol'
 import type { Project } from './project'
 
@@ -75,6 +76,7 @@ export const api = {
   workspaceProviders: () => call<WorkspaceProvider[]>('/api/workspace-providers'),
   addWorkspaceProvider: (provider: NewWorkspaceProvider) => call<WorkspaceProvider>('/api/workspace-providers', json('POST', provider)),
   removeWorkspaceProvider: (id: string) => call<void>(`/api/workspace-providers/${id}`, { method: 'DELETE' }),
+  checkWorkspaceProvider: (provider: NewWorkspaceProvider) => call<ProviderCheck>('/api/workspace-providers/check', json('POST', provider)),
 
   ssoCheck: (email: string) => call<{ sso: boolean; enforced: boolean }>(`/api/auth/sso?email=${encodeURIComponent(email)}`),
   sso: () => call<SsoConnection | null>('/api/team/sso'),

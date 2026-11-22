@@ -45,8 +45,8 @@ const request = (mode: JobRequest['mode'], extra: Partial<JobRequest> = {}): Job
   mode,
   prompt: 'How do language models read?',
   projectId: 'p1',
-  provider: 'scripted',
-  model: 'm',
+  provider: 'default',
+  model: '',
   voice: 'browser',
   ...extra,
 })

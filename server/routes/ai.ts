@@ -2,9 +2,17 @@ import { readFile } from 'node:fs/promises'
 import { Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import { z } from 'zod'
-import { describeProvider } from '../providers'
+import { defaultModelFromEnv } from '../config'
+import { describeDefault, describeProvider } from '../providers'
 import { hasFeature, planFor, requireFeature } from '../features'
-import { addWorkspaceProvider, listWorkspaceProviders, removeWorkspaceProvider, WorkspaceProviderSchema } from '../workspace-providers'
+import {
+  addWorkspaceProvider,
+  checkWorkspaceProvider,
+  listWorkspaceProviders,
+  removeWorkspaceProvider,
+  workspaceProviders,
+  WorkspaceProviderSchema,
+} from '../workspace-providers'
 import * as speech from '../speech'
 import { requireAccount, requireOwner, type AppEnv, type Deps } from './context'
 
@@ -15,13 +23,23 @@ export function aiRoutes({ db, billing, providers }: Deps) {
   const app = new Hono<AppEnv>()
   const signedIn = requireAccount(db)
 
-  // The server's providers, then the workspace's own (Teams).
+  // "AI Theatre" (the server's default, without saying which model runs it), then the workspace's own
+  // keys, listed live so a key's new models appear without editing anything. The server's other
+  // providers are not offered: which model the plan uses is ours to choose.
   app.get('/providers', signedIn, async (c) => {
-    const shared = await Promise.all([...providers.values()].map(describeProvider))
     const { workspaceId } = c.var.account
-    const own = (await hasFeature(billing, workspaceId, 'ownProviders')) ? await listWorkspaceProviders(db, workspaceId) : []
-    return c.json([...shared, ...own.map(({ id, label, kind, models }) => ({ id, label: `${label} (your key)`, kind, models }))])
+    const ownAllowed = await hasFeature(billing, workspaceId, 'ownProviders')
+    const [fallback, own] = await Promise.all([
+      describeDefault(providers, defaultModelFromEnv()),
+      ownAllowed ? workspaceProviders(db, workspaceId).then((list) => Promise.all(list.map((p) => describeProvider(p, 'own')))) : [],
+    ])
+    return c.json([fallback, ...own])
   })
+
+  // Tries a key before it is saved, and returns the models it can use.
+  app.post('/workspace-providers/check', signedIn, requireOwner, requireFeature(billing, 'ownProviders', 'Your own AI provider'), async (c) =>
+    c.json({ models: await checkWorkspaceProvider(WorkspaceProviderSchema.parse(await c.req.json())) }),
+  )
 
   app.get('/workspace-providers', signedIn, async (c) => c.json(await listWorkspaceProviders(db, c.var.account.workspaceId)))
 

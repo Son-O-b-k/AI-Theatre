@@ -36,7 +36,9 @@ import { speak, voices } from './speech'
 import { completeLogin, saveConnection, ssoFor, startLogin } from './sso'
 import * as store from './store'
 import { freshDb } from './test-db'
-import { addWorkspaceProvider, listWorkspaceProviders, workspaceProvider } from './workspace-providers'
+import { resolveDefault } from './providers'
+import type { Provider } from './providers/types'
+import { addWorkspaceProvider, checkProviderUrl, listWorkspaceProviders, workspaceProvider } from './workspace-providers'
 
 const inAYear = () => new Date(Date.now() + 365 * 86_400_000)
 
@@ -123,6 +125,53 @@ describe('plan features', () => {
     await recordUsage(db, owner.workspaceId, OWN_KEY_USAGE, 10 * LESSON_TOKENS)
     await recordUsage(db, owner.workspaceId, 'chat', 1000)
     assert.equal(await tokensUsedSince(db, owner.workspaceId, '2000-01-01'), 1000)
+  })
+
+  test('a key with no models named is checked first, and then lists models live', async () => {
+    const tried: string[] = []
+    const check = async (input: { apiKey?: string }) => {
+      tried.push(input.apiKey ?? '')
+      if (input.apiKey !== 'good') throw new Error('Could not connect with that key: 401')
+      return ['m1']
+    }
+    const input = { label: 'Mine', kind: 'openai' as const, apiKey: 'bad', models: [] }
+    await assert.rejects(addWorkspaceProvider(db, owner.workspaceId, input, check), /401/)
+    assert.equal((await listWorkspaceProviders(db, owner.workspaceId)).length, 0, 'nothing saved')
+    const saved = await addWorkspaceProvider(db, owner.workspaceId, { ...input, apiKey: 'good' }, check)
+    assert.deepEqual([saved.models, tried], [[], ['bad', 'good']])
+  })
+
+  test('private addresses are refused in production unless allowed', () => {
+    const was = process.env.NODE_ENV
+    process.env.NODE_ENV = 'production'
+    try {
+      for (const url of ['http://localhost:11434/v1', 'http://127.0.0.1/v1', 'http://10.0.0.5/v1', 'http://169.254.169.254/', 'http://[::1]/v1', 'http://db.internal/v1']) {
+        assert.throws(() => checkProviderUrl(url), /not reachable/, url)
+      }
+      checkProviderUrl('https://api.openai.com/v1')
+      process.env.ALLOW_PRIVATE_AI_URLS = 'true'
+      checkProviderUrl('http://localhost:11434/v1')
+    } finally {
+      process.env.NODE_ENV = was
+      delete process.env.ALLOW_PRIVATE_AI_URLS
+    }
+  })
+
+  test('with no model chosen, the default from .env is used, else the first that answers', async () => {
+    const fake = (id: string, models: string[] | Error): Provider => ({
+      id, label: id, kind: 'openai',
+      listModels: async () => { if (models instanceof Error) throw models; return models },
+      stream: async function* () {},
+    })
+    const providers = new Map([['down', fake('down', new Error('offline'))], ['up', fake('up', ['a', 'b'])]])
+    const pick = async (wanted: { provider?: string; model?: string }) => {
+      const r = await resolveDefault(providers, wanted)
+      return r && [r.provider.id, r.model]
+    }
+    assert.deepEqual(await pick({}), ['up', 'a'])
+    assert.deepEqual(await pick({ provider: 'up', model: 'b' }), ['up', 'b'])
+    assert.deepEqual(await pick({ model: 'b' }), ['up', 'b'])
+    assert.equal(await resolveDefault(new Map([['down', fake('down', new Error('offline'))]]), {}), null)
   })
 
   describe('single sign-on', () => {

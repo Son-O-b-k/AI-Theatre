@@ -35,11 +35,26 @@ export interface Entitlements {
   tokensUsed: number
   /** Generation is allowed while any allowance is left; the request in flight may finish over it. */
   canGenerate: boolean
+  /** Tokens a month with the workspace's own AI key; null when the plan does not limit them. */
+  ownKeyAllowance: number | null
+  ownKeyTokensUsed: number
+  canGenerateOwnKey: boolean
   /** What the plan unlocks beyond lessons and seats. */
   features: Feature[]
 }
 
-export function entitlements(plan: PlanId, tokensUsed: number): Entitlements {
+export function entitlements(plan: PlanId, tokensUsed: number, ownKeyTokensUsed = 0): Entitlements {
   const tokenAllowance = PLANS[plan].lessons * LESSON_TOKENS
-  return { plan, tokenAllowance, tokensUsed, canGenerate: tokensUsed < tokenAllowance, features: PLANS[plan].allows }
+  const ownLessons = PLANS[plan].ownKeyLessons
+  const ownKeyAllowance = ownLessons === null ? null : ownLessons * LESSON_TOKENS
+  return {
+    plan,
+    tokenAllowance,
+    tokensUsed,
+    canGenerate: tokensUsed < tokenAllowance,
+    ownKeyAllowance,
+    ownKeyTokensUsed,
+    canGenerateOwnKey: PLANS[plan].allows.includes('ownProviders') && (ownKeyAllowance === null || ownKeyTokensUsed < ownKeyAllowance),
+    features: PLANS[plan].allows,
+  }
 }
