@@ -13,6 +13,7 @@ const JobRequestSchema = z.object({
   model: z.string().min(1),
   voice: z.string(),
   output: z.unknown().optional(),
+  language: z.string().optional(),
 })
 
 /** Lesson generation on the server, and the chapters it delivers. */
