@@ -100,7 +100,7 @@ export function useGenerator({ target, voice, project, output, create, update, s
   )
 
   const run = useCallback(
-    async (mode: Mode, prompt: string, language: string) => {
+    async (mode: Mode, prompt: string, language: string, source?: string) => {
       setWarnings([])
       starting.current = true
       try {
@@ -109,7 +109,7 @@ export function useGenerator({ target, voice, project, output, create, update, s
           forProject = (await create(titleFrom(prompt))).id
           update((created) => ({ ...created, language }))
         }
-        const request = { mode, prompt, projectId: forProject!, ...target, voice, language, output: mode === 'refine' ? output : undefined }
+        const request = { mode, prompt, projectId: forProject!, ...target, voice, language, source: mode === 'refine' ? undefined : source, output: mode === 'refine' ? output : undefined }
         const { id } = await api.startJob(request)
         const job = follow(id, forProject!)
         starting.current = false

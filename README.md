@@ -26,6 +26,7 @@ The landing page is at `/` (`src/landing/`) and the app at `/app`. The landing p
 ## Using it
 
 - **Home**: ask a question. **Full lesson** plans 3–6 chapters and writes them one by one; **Single scene** writes one.
+- **Source**: attach a PDF, Word (.docx) or text file, or paste long text into the box, and the lesson is taught from it rather than from what the model already knows. The server reads the document's text (`server/sources.ts`) and keeps nothing; the text goes to the model with the outline and every chapter, so it is capped at about 3,000 words (`MAX_SOURCE_CHARS`) and a lesson with a long source uses more of the allowance. With Ollama, the model's context length must be large enough to hold it (`OLLAMA_CONTEXT_LENGTH`).
 - While chapters are being written, the panel on the right shows the outline. Click the chapter marked *Writing now* to watch it being drawn live, or watch a finished chapter in the meantime.
 - **Playback**: chapters play one after another. The progress bar has a tick for each narration line. The space bar plays and pauses. Click any line in **Transcript** to jump to it, or press **Edit** there to change the narration.
 - **Change chapter** (the prompt under the player) asks the AI to revise the chapter on screen. **Add chapter** appends one.

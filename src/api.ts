@@ -12,6 +12,7 @@ import type {
   ProviderInfo,
   Share,
   SpeechClip,
+  SourceText,
   SsoConnection,
   Team,
   VoiceInfo,
@@ -109,6 +110,9 @@ export const api = {
     const name = `${Date.now()}-${file.name.replace(/[^\w.-]/g, '_')}`
     return call<{ url: string }>(`/api/projects/${projectId}/assets/${name}`, { method: 'PUT', body: file })
   },
+
+  /** The text of a document to teach a lesson from (PDF, Word or text); the file is not kept. */
+  readSource: (file: File) => call<SourceText>(`/api/sources?name=${encodeURIComponent(file.name)}`, { method: 'POST', body: file }),
 
   voices: () => call<VoiceInfo[]>('/api/speech/voices'),
   speak: (text: string, voice: string, signal?: AbortSignal) =>

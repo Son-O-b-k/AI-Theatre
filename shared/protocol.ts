@@ -125,6 +125,23 @@ export interface JobRequest extends ModelTarget {
   output?: unknown
   /** The lesson's language (shared/languages.ts); English when unset. */
   language?: string
+  /** Material to teach from (a document's text, at most MAX_SOURCE_CHARS); new lessons and chapters only. */
+  source?: string
+}
+
+/**
+ * Source material is sent with every model call of a job (the outline and each chapter), so it is
+ * capped: about 3,000 words, roughly ten pages, adds about a lesson's allowance to a full lesson.
+ */
+export const MAX_SOURCE_CHARS = 20_000
+
+/** `POST /api/sources`: the text of an uploaded document, cut to MAX_SOURCE_CHARS. */
+export interface SourceText {
+  name: string
+  text: string
+  words: number
+  /** The document was longer than MAX_SOURCE_CHARS; only its beginning is used. */
+  truncated: boolean
 }
 
 /** A finished chapter waiting for the app to add it to its project. */

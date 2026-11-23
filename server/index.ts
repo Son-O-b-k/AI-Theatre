@@ -25,6 +25,7 @@ import { jobRoutes } from './routes/jobs'
 import type { Deps } from './routes/context'
 import { projectRoutes } from './routes/projects'
 import { shareRoutes } from './routes/shares'
+import { sourceRoutes } from './routes/sources'
 import { teamRoutes } from './routes/team'
 
 // Settings (database, payment and AI keys) can live in .env; see .env.example.
@@ -51,6 +52,7 @@ app.route('/api/team', teamRoutes(deps))
 app.route('/api/brand', brandRoutes(deps))
 app.route('/api/shares', shareRoutes(deps))
 app.route('/api/jobs', jobRoutes(deps, jobs))
+app.route('/api/sources', sourceRoutes(deps))
 app.route('/api/exports', exportRoutes(deps, exports))
 app.route('/api/projects', projectRoutes(deps))
 app.route('/api', aiRoutes(deps))

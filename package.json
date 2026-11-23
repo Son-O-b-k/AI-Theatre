@@ -15,7 +15,7 @@
     "preview:content": "npm run check:content && tsx scripts/preview-content.ts",
     "admin": "tsx server/admin.ts",
     "pretest": "npm run check:content",
-    "test": "tsx --test scripts/content.test.ts src/scene/scene.test.ts server/billing/billing.test.ts server/accounts.test.ts server/lessons/jobs.test.ts server/features.test.ts"
+    "test": "tsx --test scripts/content.test.ts src/scene/scene.test.ts server/billing/billing.test.ts server/accounts.test.ts server/lessons/jobs.test.ts server/features.test.ts server/sources.test.ts"
   },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "1.1.0",
@@ -37,6 +37,7 @@
     "linkedom": "0.18.14",
     "lucide": "1.59.0",
     "lucide-react": "1.59.0",
+    "mammoth": "1.13.0",
     "nodemailer": "10.1.7",
     "pg": "8.23.1",
     "react": "18.3.1",
@@ -44,6 +45,7 @@
     "roughjs": "4.6.6",
     "svg-path-properties": "2.2.0",
     "tailwindcss": "4.3.3",
+    "unpdf": "2.2.1",
     "zod": "4.6.7"
   },
   "devDependencies": {

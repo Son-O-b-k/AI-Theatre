@@ -1,11 +1,11 @@
 import { Hono } from 'hono'
 import { streamSSE } from 'hono/streaming'
 import { z } from 'zod'
-import type { JobEvent } from '../../shared/protocol'
+import { MAX_SOURCE_CHARS, type JobEvent } from '../../shared/protocol'
 import type { Jobs } from '../lessons/jobs'
 import { requireAccount, type AppEnv, type Deps } from './context'
 
-const JobRequestSchema = z.object({
+export const JobRequestSchema = z.object({
   mode: z.enum(['teach', 'scene', 'refine']),
   prompt: z.string().trim().min(1).max(4000),
   projectId: z.string().regex(/^[\w-]{1,64}$/),
@@ -14,6 +14,7 @@ const JobRequestSchema = z.object({
   voice: z.string(),
   output: z.unknown().optional(),
   language: z.string().optional(),
+  source: z.string().trim().max(MAX_SOURCE_CHARS + 1000).optional(),
 })
 
 /** Lesson generation on the server, and the chapters it delivers. */

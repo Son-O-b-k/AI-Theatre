@@ -145,12 +145,12 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
     setNotice('Thank you! Your plan is active.')
   }, [onAccountChange])
 
-  const run = async (runMode: Mode, text: string) => {
+  const run = async (runMode: Mode, text: string, source?: string) => {
     setError(null)
     const refining = runMode === 'refine' ? output : null
     layout.setEditing(null)
     setSelected(LIVE)
-    await generator.run(runMode, text, runMode === 'teach' ? language : (project?.language ?? DEFAULT_LANGUAGE))
+    await generator.run(runMode, text, runMode === 'teach' ? language : (project?.language ?? DEFAULT_LANGUAGE), source)
     if (refining) selectIfWatchingLive(refining.id)
   }
 

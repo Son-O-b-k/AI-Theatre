@@ -244,6 +244,14 @@ export class Jobs {
       return narrated(label, result.scene)
     }
 
+    // Ollama reads only its context window (often a few thousand tokens unless raised) and drops the rest unannounced.
+    if (request.source && request.mode !== 'refine' && provider.kind === 'ollama') {
+      job.emit({
+        type: 'warning',
+        message: "Ollama models often read only the first few thousand words of a request; if the lesson misses parts of your source, raise the model's context length (OLLAMA_CONTEXT_LENGTH)",
+      })
+    }
+
     let status: 'done' | 'failed' | 'cancelled' = 'done'
     let error: string | undefined
     try {
@@ -251,10 +259,10 @@ export class Jobs {
         const output = request.output as Output
         await deliver(reviseOutput(output, await scene('Revising', refineMessages(output.scene, request.prompt)), turn))
       } else if (request.mode === 'scene') {
-        await deliver(newOutput(titleFrom(request.prompt), await scene('Writing scene', sceneMessages(request.prompt)), turn))
+        await deliver(newOutput(titleFrom(request.prompt), await scene('Writing scene', sceneMessages(request.prompt, request.source)), turn))
       } else {
         job.emit({ type: 'status', text: 'Planning the lesson…' })
-        const outline = await planLesson(complete, inLanguage(planMessages(request.prompt), language), signal)
+        const outline = await planLesson(complete, inLanguage(planMessages(request.prompt, request.source), language), signal)
         const titles = outline.map((chapter) => chapter.title)
         for (const [index, chapter] of outline.entries()) {
           const left = index > 0 && (await this.billing.entitlements(job.workspaceId))
@@ -264,7 +272,7 @@ export class Jobs {
           }
           job.emit({ type: 'plan', titles, index })
           const label = `Chapter ${index + 1}/${outline.length} · ${chapter.title}`
-          const written = await scene(label, chapterMessages(request.prompt, outline, index))
+          const written = await scene(label, chapterMessages(request.prompt, outline, index, request.source))
           await deliver(newOutput(chapter.title, written, { ...turn, prompt: `${request.prompt}: ${chapter.title}` }))
         }
       }

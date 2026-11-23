@@ -24,7 +24,7 @@ interface Props {
   status: string
   warnings: string[]
   language: Parameters<typeof PromptBox>[0]['language']
-  onRun(mode: Mode, prompt: string): void
+  onRun(mode: Mode, prompt: string, source?: string): void
   onStop(): void
   onOpen(id: string): void
 }
