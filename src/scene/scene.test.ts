@@ -5,7 +5,10 @@ import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import { LESSON_RULES } from '../../content/lesson-rules'
 import { planLesson } from '../ai/generate'
-import { PLAN_SYSTEM, planMessages, SCENE_SYSTEM } from '../ai/prompts'
+import { PLAN_SYSTEM, planMessages, SCENE_SYSTEM, sceneMessages, withPictures } from '../ai/prompts'
+import type { LessonImage } from '../../shared/protocol'
+import { photoSize, withImages } from './images'
+import { sampleAt } from './sample'
 import { BROWSER_VOICE, unrecorded, withNarration } from '../narration'
 import { editNarration, newOutput } from '../project'
 import { checkScene } from './check'
@@ -438,5 +441,93 @@ describe('recorded narration', () => {
     const browser = withNarration(narrated, BROWSER_VOICE)
     assert.equal(browser.voice, undefined)
     assert.deepEqual(browser.cues, lesson().cues)
+  })
+})
+
+describe("creators' pictures", () => {
+  const IMAGES: LessonImage[] = [
+    {
+      id: 'img1',
+      url: '/api/images/0123456789abcdef.jpg',
+      width: 1600,
+      height: 1200,
+      about: 'Onion cells under a microscope',
+      look: 'photo',
+      spots: [
+        { name: 'nucleus', x: 0.7, y: 0.3 },
+        { name: 'cell wall', x: 0.2, y: 0.8 },
+      ],
+    },
+  ]
+  const LINES = [
+    { op: 'board', title: 'Inside a cell', layout: 'row' },
+    { op: 'el', id: 'p', kind: 'photo', image: 'img1', label: 'Onion skin' },
+    { op: 'el', id: 'n', kind: 'pin', on: 'p', spot: 'nucleus', label: 'Nucleus' },
+    { op: 'el', id: 'w', kind: 'marker', on: 'p', spot: 'Cell Wall' },
+    { op: 'el', id: 'made-up', kind: 'pin', on: 'p', spot: 'mitochondria' },
+    { op: 'el', id: 'fake', kind: 'photo', image: 'img9', label: 'Not given' },
+    { op: 'el', id: 'note', kind: 'box', label: 'Cells' },
+    { op: 'beat', say: 'This is onion skin, seen through a microscope.', do: [{ show: 'p' }] },
+    { op: 'beat', say: 'Each cell has a nucleus.', do: [{ show: 'n' }, { zoom: 'p', spot: 'nucleus' }] },
+    { op: 'beat', say: 'And a wall around it.', do: [{ show: 'w' }] },
+    { op: 'beat', say: 'Every cell is built the same way.', do: [{ zoom: 'p' }] },
+  ]
+  const pictured = () => {
+    const warnings: string[] = []
+    const { scene } = build(LINES)
+    return { scene: finalizeScene(withImages(scene, IMAGES, (w) => warnings.push(w))), warnings }
+  }
+
+  test('photos are filled in from the pictures given; made-up pictures and spots are dropped with a warning', () => {
+    const { scene, warnings } = pictured()
+    const photo = scene.elements.find((el) => el.id === 'p')
+    assert.equal(photo?.kind, 'photo')
+    assert.deepEqual(photo?.kind === 'photo' && [photo.src, photo.aspect, photo.spots?.nucleus], ['/api/images/0123456789abcdef.jpg', 1.333, [0.7, 0.3]])
+    assert.equal(scene.elements.find((el) => el.id === 'fake')?.kind, 'box')
+    const pin = scene.elements.find((el) => el.id === 'w')
+    assert.deepEqual(pin?.kind === 'pin' && [pin.at, pin.label], [[0.2, 0.8], 'Cell Wall'])
+    assert.ok(!scene.elements.some((el) => el.id === 'made-up'))
+    assert.ok(warnings.some((w) => /made-up/.test(w)) && warnings.some((w) => /img9/.test(w)))
+  })
+
+  test('pins sit on their spot, stay on it while the photo zooms, and the board makes way', () => {
+    const { scene } = pictured()
+    const resolved = compile(scene)
+    const photo = resolved.elements.find((el) => el.id === 'p')!
+    const pin = resolved.elements.find((el) => el.id === 'n')!
+    const zoom = resolved.keys.filter((key) => key.el === 'p' && key.prop === 'scale').map((key) => key.t)
+    assert.ok(zoom.length >= 4, 'the photo zooms in and back out')
+    // Pins are drawn over photos, and the values at any moment keep the pin on the nucleus.
+    assert.ok(resolved.elements.indexOf(pin) > resolved.elements.indexOf(photo))
+    const state = toTheatreState(resolved)
+    for (const t of [zoom[0], (zoom[0] + zoom[1]) / 2, zoom[1], zoom[2] + 0.3]) {
+      const at = sampleAt(resolved, state, t)
+      const p = at.get('p')!
+      const n = at.get('n')!
+      const { w, h } = photoSize(photo as Extract<typeof photo, { kind: 'photo' }>)
+      assert.ok(Math.abs(n.x - (p.x + 0.2 * w * p.scale)) < 1.5, `pin x on the nucleus at ${t}s`)
+      assert.ok(Math.abs(n.y - (p.y - 0.2 * h * p.scale)) < 1.5, `pin y on the nucleus at ${t}s`)
+    }
+    // The card makes way while zoomed in and comes back after.
+    const card = resolved.keys.filter((key) => key.el === 'note' && key.prop === 'opacity').map((key) => key.v)
+    assert.deepEqual(card.slice(-4), [1, 0, 0, 1])
+    assert.deepEqual(geometryProblems(scene), [])
+  })
+
+  test('zooming is written back out for the AI, described in the editor, and removing a photo removes its pins', () => {
+    const { scene } = pictured()
+    assert.match(sceneToLines(scene), /"zoom":"p","spot":"nucleus"/)
+    const zoom = scene.beats[1].actions.find((a) => a.type === 'zoom')!
+    assert.equal(describeAction(scene, zoom), 'Zooms Onion skin in on nucleus')
+    const removed = removeElement(scene, 'p')
+    assert.ok(!removed.elements.some((el) => el.kind === 'pin'))
+  })
+
+  test('the AI is told about pictures only when there are some, with their spots', () => {
+    const plain = sceneMessages('Cells')
+    assert.equal(withPictures(plain, undefined), plain)
+    const told = withPictures(plain, IMAGES).at(-1)!.content
+    assert.match(told, /"img1": "Onion cells under a microscope" \(wide; spots: "nucleus", "cell wall"\)/)
+    assert.match(told, /"zoom":"p1","spot":"nucleus"/)
   })
 })

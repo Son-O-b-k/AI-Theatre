@@ -5,9 +5,10 @@
 // declared is ever missing from the screen.
 
 import { linkGeometry, type Placed } from './geometry'
+import { photoSize, spotIn } from './images'
 import { layoutBoard, type Placement } from './layout'
 import { THEME, toHex } from './palette'
-import { stageOf, type Action, type AnimatedProp, type Beat, type Cue, type ElementKind, type Key, type Scene, type SceneElement, type StageFrame, type Visual } from './schema'
+import { stageOf, type Action, type ElementOf, type AnimatedProp, type Beat, type Cue, type ElementKind, type Key, type Scene, type SceneElement, type StageFrame, type Visual } from './schema'
 
 export interface Resolved {
   /** The stage's size and safe area, from the scene's format. */
@@ -30,9 +31,11 @@ const BOARD_CHANGE = 0.8
 const BEAT_GAP = 0.5
 const MIN_BEAT = 2.5
 const DIMMED = 0.2
-const DURATION = { fade: 0.6, pop: 0.6, hide: 0.5, highlight: 0.4, pulse: 0.8, focus: 0.4, travel: 1.6, move: 0.8 }
-/** Elements that draw themselves in (`draw` 0..1), and how long that takes. */
-const DRAW_TIME: Partial<Record<ElementKind, number>> = { link: 0.9, illustration: 2.4, chart: 1.4, counter: 1.6, timeline: 1.6, table: 1.2 }
+const DURATION = { fade: 0.6, pop: 0.6, hide: 0.5, highlight: 0.4, pulse: 0.8, focus: 0.4, travel: 1.6, move: 0.8, zoom: 1.4 }
+/** Elements that draw themselves in (`draw` 0..1), and how long that takes. Photos do when sketched. */
+const DRAW_TIME: Partial<Record<ElementKind, number>> = { link: 0.9, illustration: 2.4, chart: 1.4, counter: 1.6, timeline: 1.6, table: 1.2, photo: 2.8 }
+/** How far a zoom moves in, unless the AI says. */
+const ZOOM = 2.4
 const TRAVEL_SAMPLES = 12
 
 export const titleId = (board: number) => `title-${board + 1}`
@@ -124,8 +127,54 @@ export function compile(scene: Scene): Resolved {
         tween(action.token, 'opacity', t + d, t + d + 0.2, 0)
         return d + 0.2
       }
+
+      case 'zoom': {
+        const photo = byId.get(action.ids[0])
+        const home = photo && positions.get(photo.id)?.get(board)
+        if (photo?.kind !== 'photo' || !home) return 0
+        const at = action.spot ? spotIn(photo, action.spot, elements) : undefined
+        if (action.spot && !at) return 0
+        // In: the place moves to the middle of the stage, the photo grows around it. Out: back to its place.
+        const { w, h } = photoSize(photo)
+        const scale = at ? home.scale * (action.scale ?? ZOOM) : home.scale
+        const centre = { x: (stage.safe.x0 + stage.safe.x1) / 2, y: (stage.safe.y0 + stage.safe.y1) / 2 }
+        // Centred on the place, but a photo larger than the stage keeps covering it rather than leave a strip.
+        const cover = (wanted: number, size: number, stageSize: number, over = 12) =>
+          size >= stageSize + over * 2 ? Math.min(size / 2 - over, Math.max(stageSize + over - size / 2, wanted)) : wanted
+        const target = at
+          ? {
+              x: cover(centre.x - (at[0] - 0.5) * w * scale, w * scale, stage.width),
+              y: cover(centre.y - (at[1] - 0.5) * h * scale, h * scale, stage.height),
+            }
+          : home
+        const d = DURATION.zoom
+        tween(photo.id, 'x', t, t + d, round(target.x))
+        tween(photo.id, 'y', t, t + d, round(target.y))
+        tween(photo.id, 'scale', t, t + d, round(scale))
+        // Pins move with the same easing over the same time, so they stay on their place in the picture.
+        const pins = pinsOf(photo.id)
+        for (const pin of pins) {
+          tween(pin.id, 'x', t, t + d, round(target.x + (pin.at![0] - 0.5) * w * scale))
+          tween(pin.id, 'y', t, t + d, round(target.y + (pin.at![1] - 0.5) * h * scale))
+        }
+        // The rest of the board makes way while zoomed in, and comes back on the way out.
+        if (at) {
+          const own = new Set([photo.id, ...pins.map((pin) => pin.id)])
+          for (const id of visible(board)) {
+            if (own.has(id)) continue
+            tween(id, 'opacity', t, t + DURATION.hide, 0)
+            zoomedAway.add(id)
+          }
+        } else {
+          for (const id of zoomedAway) if (state.get(id)!.opacity === 0) tween(id, 'opacity', t + d - DURATION.fade, t + d, 1)
+          zoomedAway.clear()
+        }
+        return d
+      }
     }
   }
+
+  const pinsOf = (photo: string) => elements.filter((el): el is SceneElement & ElementOf<'pin'> => el.kind === 'pin' && el.on === photo && Boolean(el.at))
 
   const show = (id: string, t: number, fx?: 'fade' | 'pop' | 'draw') => {
     const el = byId.get(id)
@@ -153,6 +202,8 @@ export function compile(scene: Scene): Resolved {
   let t = LEAD_IN
   let board = -1
   const dimmed = new Set<string>()
+  /** Hidden while a photo on the board is zoomed in; shown again when it zooms out. */
+  const zoomedAway = new Set<string>()
 
   for (const beat of withEveryElementShown(scene)) {
     if (beat.board !== board) {
@@ -182,6 +233,7 @@ export function compile(scene: Scene): Resolved {
       }
       board = next
       dimmed.clear()
+      zoomedAway.clear()
       tween(titleId(board), 'opacity', t, t + DURATION.fade, 1)
     } else if (dimmed.size > 0) {
       for (const id of dimmed) if (state.get(id)!.opacity === DIMMED) tween(id, 'opacity', t, t + DURATION.focus, 1)
@@ -219,11 +271,22 @@ function place(scene: Scene, stage: StageFrame): { elements: SceneElement[]; pos
   // Notes wrap within the safe area; on a narrow stage that is less than the width the AI asked for.
   const room = stage.safe.x1 - stage.safe.x0
   const fitted = scene.elements.map((el) => (el.kind === 'text' && el.width > room ? { ...el, width: room } : el))
+  const placeAt = (id: string, board: number, placement: Placement) => {
+    if (!positions.has(id)) positions.set(id, new Map())
+    positions.get(id)!.set(board, placement)
+  }
   scene.boards.forEach((board, index) => {
-    const members = fitted.filter((el) => el.boards.includes(index))
-    for (const [id, placement] of layoutBoard(board, members, stage)) {
-      if (!positions.has(id)) positions.set(id, new Map())
-      positions.get(id)!.set(index, placement)
+    const members = fitted.filter((el) => el.boards.includes(index) && el.kind !== 'pin')
+    const placed = layoutBoard(board, members, stage)
+    for (const [id, placement] of placed) placeAt(id, index, placement)
+    // A pin sits on its place in the photo, wherever the layout put the photo.
+    for (const pin of fitted) {
+      if (pin.kind !== 'pin' || !pin.at || !pin.boards.includes(index)) continue
+      const photo = fitted.find((el) => el.id === pin.on)
+      const home = placed.get(pin.on)
+      if (photo?.kind !== 'photo' || !home) continue
+      const { w, h } = photoSize(photo)
+      placeAt(pin.id, index, { x: round(home.x + (pin.at[0] - 0.5) * w * home.scale), y: round(home.y + (pin.at[1] - 0.5) * h * home.scale), scale: 1, curve: 0 })
     }
     if (board.title) {
       titles.push({
@@ -241,7 +304,9 @@ function place(scene: Scene, stage: StageFrame): { elements: SceneElement[]; pos
     }
   })
 
-  const elements = fitted.map((el): SceneElement => {
+  // Pins are drawn over the photos they mark.
+  const ordered = [...fitted.filter((el) => el.kind !== 'pin'), ...fitted.filter((el) => el.kind === 'pin')]
+  const elements = ordered.map((el): SceneElement => {
     const first = positions.get(el.id)?.get(Math.min(...el.boards))
     return { ...el, ...hidden(first ?? { x: stage.width / 2, y: stage.height / 2, scale: 1, curve: 0 }) }
   })
@@ -290,7 +355,7 @@ function withEveryElementShown(scene: Scene): Beat[] {
   return beats
 }
 
-const drawsIn = (el: SceneElement) => (el.kind === 'link' ? !el.dashed : el.kind in DRAW_TIME)
+const drawsIn = (el: SceneElement) => (el.kind === 'link' ? !el.dashed : el.kind === 'photo' ? el.look === 'sketch' : el.kind in DRAW_TIME)
 
 /** Showing, hiding, focusing or pulsing a group does the same to the shapes inside it. */
 function withGroupMembers(scene: Scene, action: Action): Action {
@@ -304,7 +369,7 @@ function withGroupMembers(scene: Scene, action: Action): Action {
 
 function defaultEntrance(el: SceneElement): 'fade' | 'pop' | 'draw' {
   if (drawsIn(el)) return 'draw'
-  return el.kind === 'text' || el.kind === 'dot' || el.kind === 'group' || el.kind === 'link' ? 'fade' : 'pop'
+  return el.kind === 'text' || el.kind === 'dot' || el.kind === 'group' || el.kind === 'link' || el.kind === 'photo' ? 'fade' : 'pop'
 }
 
 function entranceTime(el: SceneElement | undefined, fx?: 'fade' | 'pop' | 'draw'): number {

@@ -20,10 +20,12 @@ const DEFAULT_COLOR: Record<ElementKind, string> = {
   timeline: 'teal',
   table: 'sky',
   group: 'slate',
+  photo: 'slate',
+  pin: 'amber',
 }
 
 /** Things that take a place in a board's layout (notes stack underneath, tokens travel, groups frame). */
-const isShape = (el: Element) => el.kind !== 'text' && el.kind !== 'link' && el.kind !== 'dot' && el.kind !== 'group'
+const isShape = (el: Element) => el.kind !== 'text' && el.kind !== 'link' && el.kind !== 'dot' && el.kind !== 'group' && el.kind !== 'pin'
 
 const LABEL_PADDING = 36
 const MAX_BOX_WIDTH = 360
@@ -62,6 +64,8 @@ export function applyOp(scene: Scene, op: SceneOp, warn: Warn): Scene {
       // Dots are travel tokens. One the AI declares itself is a thing to look at: lay it out as a circle.
       const element = op.element.kind === 'dot' ? { ...op.element, kind: 'circle' as const, r: Math.max(op.element.r, 28) } : op.element
       const color = toHex(element.color ?? DEFAULT_COLOR[element.kind])
+      // A pin is drawn on its photo, so the photo comes onto the board with it.
+      if (element.kind === 'pin') s = carry(s, element.on, board)
       return upsert(s, fitLabel({ ...element, color, boards } as Element))
     }
 
@@ -130,6 +134,7 @@ function carry(scene: Scene, id: string, board: number): Scene {
   if (!el || el.boards.includes(board)) return scene
   let s = upsert(scene, { ...el, boards: [...el.boards, board] })
   if (el.kind === 'link') for (const end of [el.from, el.to]) s = carry(s, end, board)
+  if (el.kind === 'pin') s = carry(s, el.on, board)
   return s
 }
 
@@ -241,6 +246,8 @@ function toWritten(action: Action): Record<string, unknown> {
       return { highlight: one(action.ids), color: action.color }
     case 'travel':
       return { travel: action.token, along: action.along, ...(action.color && { color: action.color }), ...(action.reverse && { reverse: true }) }
+    case 'zoom':
+      return { zoom: action.ids[0], ...(action.spot && { spot: action.spot }), ...(action.scale && { scale: action.scale }) }
     default:
       return { [action.type]: one(action.ids) }
   }

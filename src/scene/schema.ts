@@ -9,6 +9,9 @@ import { toColor } from './palette'
 
 export const SCENE_VERSION = 3
 
+/** Pictures are only ever served by this app (server/images.ts), never fetched from elsewhere. */
+export const IMAGE_URL = /^\/api\/images\/[0-9a-f]{16}\.(png|jpg|webp|gif)$/
+
 /** The shape of a lesson's video: landscape (16:9), vertical (9:16, for Shorts, Reels, TikTok) or square. */
 export const FORMATS = ['landscape', 'portrait', 'square'] as const
 export type Format = (typeof FORMATS)[number]
@@ -105,6 +108,26 @@ export const ElementSchema = z.discriminatedUnion('kind', [
   }),
   /** A labelled frame around other shapes on the board ("Before" / "After", "Inside the cell"). */
   z.object({ ...common, kind: z.literal('group'), contains: ids.pipe(z.array(z.string()).max(8)) }),
+  /**
+   * One of the creator's pictures (src/scene/images.ts). The AI names it by `image` ("img1"); the
+   * rest is filled in from the picture itself, so the stage, viewer and exports need nothing else.
+   */
+  z.object({
+    ...common,
+    kind: z.literal('photo'),
+    image: z.coerce.string(),
+    /** Its longer side. */
+    size: z.number().min(160).max(900).default(460),
+    src: z.string().regex(IMAGE_URL).optional(),
+    /** Width over height. */
+    aspect: z.number().min(0.1).max(10).optional(),
+    look: z.enum(['photo', 'sketch']).optional(),
+    /** Named places in the picture, 0..1 from its top left. */
+    spots: z.record(z.string(), z.tuple([z.number(), z.number()])).optional(),
+    credit: z.string().max(200).optional(),
+  }),
+  /** A marker on a place in a photo, with its label; it moves with the photo when it zooms. */
+  z.object({ ...common, kind: z.literal('pin'), on: z.string(), spot: z.coerce.string(), at: z.tuple([z.number(), z.number()]).optional() }),
 ])
 
 export const LinkSchema = z.object({
@@ -157,6 +180,10 @@ const ACTIONS = {
   travel: z
     .object({ travel: id, along: z.string(), color: color.optional(), reverse: z.boolean().default(false) })
     .transform((a) => ({ type: 'travel' as const, token: a.travel, along: a.along, color: a.color, reverse: a.reverse })),
+  /** Moves in on a place in a photo (a spot or a pin on it), or back out when no spot is named. */
+  zoom: z
+    .object({ zoom: id, spot: z.coerce.string().optional(), scale: z.coerce.number().min(1.2).max(4).optional().catch(undefined) })
+    .transform((a) => ({ type: 'zoom' as const, ids: [a.zoom], spot: a.spot, scale: a.scale })),
 }
 
 export type Action = z.output<(typeof ACTIONS)[keyof typeof ACTIONS]>
@@ -256,7 +283,7 @@ export function parseOp(raw: unknown): SceneOp {
   }
 }
 
-const KINDS = ['box', 'circle', 'icon', 'text', 'dot', 'illustration', 'chart', 'counter', 'timeline', 'table', 'group']
+const KINDS = ['box', 'circle', 'icon', 'text', 'dot', 'illustration', 'chart', 'counter', 'timeline', 'table', 'group', 'photo', 'pin']
 
 const KIND_ALIASES: Record<string, string> = {
   rect: 'box',
@@ -304,6 +331,9 @@ const KIND_ALIASES: Record<string, string> = {
 /** Maps an element kind a model wrote onto one the stage knows; anything unrecognisable becomes a box. */
 function normalizeKind(kind: unknown, fields: Record<string, unknown>): string {
   const name = String(kind ?? '').toLowerCase()
+  // A picture the creator gave is a photo; other "images" are drawings from the library.
+  if (['photo', 'image', 'picture', 'img'].includes(name) && 'image' in fields) return 'photo'
+  if (['marker', 'callout', 'spot'].includes(name) && 'on' in fields) return 'pin'
   if (name === 'link' || ((KIND_ALIASES[name] === 'link' || !name) && 'from' in fields && 'to' in fields)) return 'link'
   if (KINDS.includes(name)) return name
   const alias = KIND_ALIASES[name]

@@ -4,6 +4,7 @@ import type { ProjectSummary } from '../../shared/protocol'
 import type { Mode } from '../hooks/useGenerator'
 import { PromptBox, type ModeOption } from './PromptBox'
 import { timeAgo } from './Sidebar'
+import type { LessonImage } from '../../shared/protocol'
 
 const MODES: ModeOption[] = [
   { mode: 'teach', label: 'Full lesson', placeholder: 'What do you want to understand? e.g. How does a transformer pay attention?' },
@@ -25,7 +26,7 @@ interface Props {
   warnings: string[]
   language: Parameters<typeof PromptBox>[0]['language']
   format: Parameters<typeof PromptBox>[0]['format']
-  onRun(mode: Mode, prompt: string, source?: string): void
+  onRun(mode: Mode, prompt: string, source?: string, images?: LessonImage[]): void
   onStop(): void
   onOpen(id: string): void
 }

@@ -211,7 +211,7 @@ describe('lesson jobs', () => {
     assert.deepEqual(await status('old'), { status: 'failed', error: 'The server restarted.' })
     assert.deepEqual(await status('tired'), { status: 'failed', error: 'The server restarted.' })
     assert.equal((await status('gone')).status, 'failed')
-    assert.match((await status('gone')).error, /no longer set up/)
+    assert.match((await status('gone')).error!, /no longer set up/)
   })
 
   test('a job no longer in memory still ends for an app that comes back late', async () => {
@@ -221,6 +221,23 @@ describe('lesson jobs', () => {
     for (let i = 0; i < 50 && (await db.get<{ status: string }>('SELECT status FROM jobs WHERE id = ?', id))!.status === 'running'; i++) await new Promise((r) => setTimeout(r, 10))
     assert.deepEqual(await finish(later, id), [{ type: 'end', status: 'done', error: undefined }])
     await assert.rejects(later.subscribe('nope', account.workspaceId, () => {}), (e: JobError) => e.status === 404)
+  })
+
+  test("the creator's pictures are offered to the model and filled into the chapter", async () => {
+    let told = ''
+    const jobs = jobsWith({
+      ...scriptedProvider(),
+      async *stream(req) {
+        told = req.messages.at(-1)!.content
+        for (const line of [...SCENE.slice(0, 1), { op: 'el', id: 'p', kind: 'photo', image: 'img1', label: 'Cells' }, { op: 'beat', say: 'Look closely at these cells.', do: [{ show: 'p' }] }]) yield JSON.stringify(line) + '\n'
+      },
+    })
+    const image = { id: 'img1', url: '/api/images/0123456789abcdef.png', width: 400, height: 300, about: 'Onion cells', look: 'sketch' as const, spots: [] }
+    const events = await finish(jobs, await jobs.start(account, request('scene', { images: [image] })))
+    assert.match(told, /"img1": "Onion cells"/)
+    const output = (events.find((e) => e.type === 'output') as Extract<JobEvent, { type: 'output' }>).delivery.output as Output
+    const photo = output.scene.elements.find((el) => el.id === 'p')
+    assert.deepEqual(photo?.kind === 'photo' && [photo.src, photo.look], ['/api/images/0123456789abcdef.png', 'sketch'])
   })
 
   test('provider errors are put in plain words', async () => {

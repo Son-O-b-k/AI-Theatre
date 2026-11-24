@@ -24,6 +24,9 @@ export interface FrameChapter {
   theatreState: TheatreState
 }
 
+/** resvg only asks for absolute URLs; pictures get one on a host that is never contacted. */
+const IMAGE_HOST = 'https://stage.invalid'
+
 const escapeXml = (text: string) => text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)
 
 /** The caption box at the bottom of the frame, as in the player. */
@@ -51,6 +54,8 @@ export interface RenderOptions {
   brand: Brand | null
   captions: boolean
   fontFiles: string[]
+  /** The pictures the chapters show, by URL (server/images.ts). */
+  images?: Record<string, Uint8Array>
   /** The range of frames to draw, counted across the whole lesson (workers split it). */
   from: number
   to: number
@@ -92,12 +97,18 @@ export async function renderFrames(options: RenderOptions): Promise<void> {
       // resvg does not resolve CSS variables, so the label halo gets its colour directly.
       const svg = stage.svg.outerHTML
         .replace(/var\(--stage-bg\)/g, resolved.background)
+        .replace(/href="\/api\/images\//g, `href="${IMAGE_HOST}/api/images/`)
         .replace(/<\/svg>$/, `${options.captions && cue ? captionSvg(cue.text, resolved.stage) : ''}</svg>`)
       if (svg !== previous) {
-        const rendered = new Resvg(svg, {
+        const resvg = new Resvg(svg, {
           fitTo: { mode: 'width', value: resolved.stage.width },
           font: { fontFiles: options.fontFiles, loadSystemFonts: true, defaultFontFamily: 'Inter' },
-        }).render()
+        })
+        for (const href of resvg.imagesToResolve()) {
+          const image = options.images?.[href.slice(IMAGE_HOST.length)]
+          if (image) resvg.resolveImage(href, Buffer.from(image))
+        }
+        const rendered = resvg.render()
         pixels = rendered.pixels
         previous = svg
       }

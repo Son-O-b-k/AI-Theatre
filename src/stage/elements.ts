@@ -2,10 +2,12 @@
 // 0,0) and painted with currentColor, so moving, scaling and recolouring the element's group
 // animates it. Elements that draw themselves in return a `draw` function taking progress 0..1.
 
-import { hasShapeLabel, innerIcon, LABEL_SIZE, labelOffset, labelPosition } from '../scene/geometry'
+import { hexToRgba } from '../scene/color'
+import { hasShapeLabel, innerIcon, LABEL_SIZE, labelOffset, labelPosition, PIN_RADIUS } from '../scene/geometry'
+import { photoSize } from '../scene/images'
 import { ICON_GRID, ICONS, ILLUSTRATIONS, type ArtNode } from '../scene/library'
 import type { ElementOf, SceneElement } from '../scene/schema'
-import { lineHeight, wrapText } from '../scene/text'
+import { lineHeight, textWidth, wrapText } from '../scene/text'
 import { artSize, chartLayout, CHART, counterText, TABLE, tableLayout, TIMELINE, timelineLayout } from '../scene/widgets'
 import { pathLength, reveal, roundedRect, seedOf, sketchCircle, sketchLine, sketchOutline } from './sketch'
 import { clamp01, create, lines, type Attributes } from './svg'
@@ -75,6 +77,15 @@ export function buildShape(el: SceneElement, ink: Ink): Part {
       break
     case 'table':
       part.draw = table(root, el, ink)
+      break
+    case 'photo':
+      part.draw = photo(root, el, ink)
+      break
+    case 'pin':
+      root.append(
+        create('circle', { r: PIN_RADIUS, fill: 'currentColor', 'fill-opacity': 0.25, stroke: 'currentColor', 'stroke-width': 3.5 }),
+        create('circle', { r: 4, fill: 'currentColor' }),
+      )
       break
   }
 
@@ -164,6 +175,80 @@ function illustration(root: SVGGElement, el: ElementOf<'illustration'>): Part['d
     const wash = String(clamp01((progress - 0.55) / 0.45))
     for (const node of washes) node.setAttribute('opacity', wash)
   }
+}
+
+/**
+ * One of the creator's pictures in a hand-drawn frame. As a sketch, its edges are traced in the
+ * stage's ink and drawn in left to right, then the picture washes in faintly underneath, like the
+ * library's drawings. Ids of the clip and filter come from what they depend on, so two stages on
+ * one page share them harmlessly.
+ */
+function photo(root: SVGGElement, el: ElementOf<'photo'>, ink: Ink): Part['draw'] {
+  const { w, h } = photoSize(el)
+  const key = seedOf(`${el.src}|${w}|${h}|${ink.text}`)
+  const frame = roundedRect(-w / 2, -h / 2, w, h, 14)
+  const defs = create('defs')
+  const clip = create('clipPath', { id: `photo-clip-${key}` })
+  clip.append(create('path', { d: frame }))
+  defs.append(clip)
+  root.append(defs)
+  const picture = (attributes: Attributes = {}) =>
+    create('image', { href: el.src ?? '', x: -w / 2, y: -h / 2, width: w, height: h, preserveAspectRatio: 'xMidYMid slice', ...attributes })
+  const outline = sketchOutline(frame, seedOf(el.id))
+  const credit = el.credit ? creditText(el.credit, w, h) : null
+
+  if (el.look !== 'sketch') {
+    const shown = create('g', { 'clip-path': `url(#photo-clip-${key})` })
+    shown.append(picture())
+    root.append(shown, create('path', { d: outline, ...STROKE, 'stroke-opacity': 0.8 }))
+    if (credit) root.append(credit)
+    return undefined
+  }
+
+  // Edges: grey, a little softened, then a Laplacian kernel; their strength becomes the ink's opacity.
+  const { r, g, b } = hexToRgba(ink.text)
+  const filter = create('filter', { id: `photo-sketch-${key}`, x: 0, y: 0, width: 1, height: 1, 'color-interpolation-filters': 'sRGB' })
+  filter.append(
+    create('feColorMatrix', { type: 'saturate', values: 0 }),
+    create('feGaussianBlur', { stdDeviation: 1.3 }),
+    create('feConvolveMatrix', { order: 3, kernelMatrix: '-1 -1 -1 -1 8 -1 -1 -1 -1', preserveAlpha: 'true' }),
+    create('feColorMatrix', { type: 'matrix', values: `0 0 0 0 ${r} 0 0 0 0 ${g} 0 0 0 0 ${b} 5 5 5 0 -0.2` }),
+  )
+  const sweep = create('rect', { x: -w / 2, y: -h / 2, width: 0, height: h })
+  const wipe = create('clipPath', { id: `photo-wipe-${el.id}-${key}` })
+  wipe.append(sweep)
+  defs.append(filter, wipe)
+
+  const wash = create('g', { 'clip-path': `url(#photo-clip-${key})`, opacity: 0 })
+  wash.append(picture())
+  const traced = create('g', { 'clip-path': `url(#photo-wipe-${el.id}-${key})` })
+  const lines = create('g', { 'clip-path': `url(#photo-clip-${key})` })
+  lines.append(picture({ filter: `url(#photo-sketch-${key})` }))
+  traced.append(lines)
+  const border = create('path', { d: outline, ...STROKE })
+  const length = pathLength(outline)
+  root.append(wash, traced, border)
+  if (credit) root.append(credit)
+
+  return (progress) => {
+    sweep.setAttribute('width', String(w * clamp01(progress / 0.75)))
+    reveal(border, length, clamp01(progress / 0.75))
+    wash.setAttribute('opacity', String(0.35 * clamp01((progress - 0.6) / 0.4)))
+    credit?.setAttribute('opacity', String(clamp01((progress - 0.6) / 0.4)))
+  }
+}
+
+/** The picture's author and licence, small on a dark band in its bottom right corner (open licences ask for it). */
+function creditText(text: string, w: number, h: number): SVGGElement {
+  const size = 11
+  const fits = Math.floor((w - 24) / (size * 0.55))
+  const shown = text.length > fits ? `${text.slice(0, fits - 1)}…` : text
+  const width = Math.min(w - 8, textWidth(shown, size) + 12)
+  const group = create('g')
+  const credit = create('text', { x: w / 2 - 10, y: h / 2 - 10, 'text-anchor': 'end', 'font-size': size, 'font-weight': 500, fill: '#fff', 'fill-opacity': 0.9 })
+  credit.textContent = shown
+  group.append(create('rect', { x: w / 2 - 4 - width, y: h / 2 - 24, width, height: 18, rx: 5, fill: '#000', 'fill-opacity': 0.55 }), credit)
+  return group
 }
 
 /** Bars grow one after another; each value appears as its bar arrives. */

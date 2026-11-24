@@ -14,6 +14,7 @@ import { escape } from '../email/templates/layout'
 import { toViewerLesson } from '../shares'
 import { clipFile } from '../speech'
 import { zip, type ZipEntry } from './zip'
+import { imageUrls, readImage } from '../images'
 
 const PLAYER = resolve('dist-player/player.js')
 
@@ -103,6 +104,10 @@ export async function exportScorm({ project, brand, workspaceId, assetPath, outp
       if (data) media.set(fileName(cue.audio), data)
     }
     if (chapter.soundtrack) media.set(fileName(chapter.soundtrack), await readFile(assetPath(chapter.soundtrack)))
+    for (const url of imageUrls([chapter.scene])) {
+      const data = await readImage(url)
+      if (data) media.set(fileName(url), data)
+    }
   }
   if (brand?.logo) {
     const logo = await readLogo(workspaceId)

@@ -107,7 +107,11 @@ export function mountViewer(container: HTMLElement, lesson: ViewerLesson, option
     const chapter = chapters[i]
     const scene = chapter.scene as Scene
     // Clip URLs are resolved here, so a packaged lesson plays its own copies.
-    const withUrls: Scene = { ...scene, cues: scene.cues.map((cue) => (cue.audio ? { ...cue, audio: resolveUrl(cue.audio) } : cue)) }
+    const withUrls: Scene = {
+      ...scene,
+      cues: scene.cues.map((cue) => (cue.audio ? { ...cue, audio: resolveUrl(cue.audio) } : cue)),
+      elements: scene.elements.map((el) => (el.kind === 'photo' && el.src ? { ...el, src: resolveUrl(el.src) } : el)),
+    }
     const resolved = brandResolved(compile(withUrls), lesson.brand)
     const state = brandTheatreState(chapter.theatreState as TheatreState, lesson.brand)
     stage.render(resolved)

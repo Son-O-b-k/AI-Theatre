@@ -189,6 +189,8 @@ const ACTIONS = {
   highlight: 'Change colour of',
   pulse: 'Pulse',
   travel: 'Send a dot along',
+  zoom: 'Zoom in on',
+  unzoom: 'Zoom back out of',
 } as const
 
 /** "Show [The Brain] [Add]": what happens during a step, built from the things on its screen. */
@@ -197,7 +199,10 @@ function AddAction({ scene, board, onAdd }: { scene: Scene; board: number; onAdd
   const [type, setType] = useState<keyof typeof ACTIONS>('show')
   const [target, setTarget] = useState('')
   const [color, setColor] = useState<keyof typeof PALETTE>('amber')
-  const things = onBoard(scene, board).filter((el) => (type === 'travel' ? el.kind === 'link' : true))
+  // Zooming moves in on a pin of a picture, or back out of the picture.
+  const things = onBoard(scene, board).filter((el) =>
+    type === 'travel' ? el.kind === 'link' : type === 'zoom' ? el.kind === 'pin' : type === 'unzoom' ? el.kind === 'photo' : true,
+  )
   const chosen = things.some((el) => el.id === target) ? target : (things[0]?.id ?? '')
 
   if (!open) {
@@ -210,12 +215,17 @@ function AddAction({ scene, board, onAdd }: { scene: Scene; board: number; onAdd
 
   const add = () => {
     if (!chosen) return
+    const pin = scene.elements.find((el) => el.id === chosen)
     onAdd(
       type === 'travel'
         ? { type, token: `${chosen}-dot`, along: chosen, color, reverse: false }
         : type === 'highlight'
           ? { type, ids: [chosen], color }
-          : { type, ids: [chosen], fx: undefined },
+          : type === 'zoom'
+            ? { type, ids: [pin?.kind === 'pin' ? pin.on : chosen], spot: chosen, scale: undefined }
+            : type === 'unzoom'
+              ? { type: 'zoom', ids: [chosen], spot: undefined, scale: undefined }
+              : { type, ids: [chosen], fx: undefined },
     )
     setOpen(false)
   }
@@ -231,7 +241,11 @@ function AddAction({ scene, board, onAdd }: { scene: Scene; board: number; onAdd
         ))}
       </select>
       <select value={chosen} onChange={(e) => setTarget(e.target.value)} className={cx(select, 'flex-1')}>
-        {things.length === 0 && <option value="">{type === 'travel' ? 'No arrows on this screen' : 'Nothing on this screen'}</option>}
+        {things.length === 0 && (
+          <option value="">
+            {type === 'travel' ? 'No arrows on this screen' : type === 'zoom' ? 'No pins on this screen' : type === 'unzoom' ? 'No pictures on this screen' : 'Nothing on this screen'}
+          </option>
+        )}
         {things.map((el) => (
           <option key={el.id} value={el.id}>
             {nameOf(scene, el.id)}

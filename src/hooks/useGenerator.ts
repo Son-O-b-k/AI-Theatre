@@ -4,7 +4,7 @@
 // Chapters finished while the app was closed are collected when their project is opened.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Delivery, JobEvent, JobMode, ModelTarget } from '../../shared/protocol'
+import type { Delivery, JobEvent, JobMode, LessonImage, ModelTarget } from '../../shared/protocol'
 import { api } from '../api'
 import { record, unrecorded, withNarration } from '../narration'
 import { retimed, titleFrom, type Output, type Project } from '../project'
@@ -122,7 +122,7 @@ export function useGenerator({ target, voice, project, output, create, update, s
   )
 
   const run = useCallback(
-    async (mode: Mode, prompt: string, language: string, format: Format, source?: string) => {
+    async (mode: Mode, prompt: string, language: string, format: Format, source?: string, images?: LessonImage[]) => {
       setWarnings([])
       starting.current = true
       try {
@@ -131,7 +131,7 @@ export function useGenerator({ target, voice, project, output, create, update, s
           forProject = (await create(titleFrom(prompt))).id
           update((created) => ({ ...created, language, format }))
         }
-        const request = { mode, prompt, projectId: forProject!, ...target, voice, language, format, source: mode === 'refine' ? undefined : source, output: mode === 'refine' ? output : undefined }
+        const request = { mode, prompt, projectId: forProject!, ...target, voice, language, format, source: mode === 'refine' ? undefined : source, images, output: mode === 'refine' ? output : undefined }
         const { id } = await api.startJob(request)
         const job = follow(id, forProject!)
         starting.current = false

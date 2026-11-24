@@ -19,7 +19,10 @@ export function checkScene(scene: Resolved): string[] {
   const issues = new Map<string, string>()
   const report = (id: string, message: string) => issues.has(id) || issues.set(id, message) // keep the first occurrence
   const seen = new Set<string>()
-  const solid = scene.elements.filter((el) => el.kind !== 'link' && el.kind !== 'dot' && el.kind !== 'group')
+  // Pins sit on their photo by design.
+  const solid = scene.elements.filter((el) => el.kind !== 'link' && el.kind !== 'dot' && el.kind !== 'group' && el.kind !== 'pin')
+  /** A photo zoomed in fills the stage and may run past its edges; that is the point of it. */
+  const zoomed = (el: SceneElement, t: number) => el.kind === 'photo' && value(el, 'scale', t) > el.scale * 1.05
 
   for (let t = 0; t <= scene.duration; t += STEP) {
     const visible = scene.elements.filter((el) => value(el, 'opacity', t) > VISIBLE)
@@ -31,6 +34,7 @@ export function checkScene(scene: Resolved): string[] {
 
     const { width, height } = scene.stage
     for (const { el, rect } of boxes) {
+      if (zoomed(el, t)) continue
       if (rect.x0 < -TOLERANCE || rect.y0 < -TOLERANCE || rect.x1 > width + TOLERANCE || rect.y1 > height + TOLERANCE) {
         report(`off:${el.id}`, `"${el.id}" (with its label) goes past the edge of the ${width}x${height} stage at ${t}s`)
       }

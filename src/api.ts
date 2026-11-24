@@ -19,6 +19,8 @@ import type {
   WorkspaceProvider,
   NewWorkspaceProvider,
   ProviderCheck,
+  StoredImage,
+  ImageSearchResult,
 } from '../shared/protocol'
 import type { Project } from './project'
 
@@ -116,6 +118,9 @@ export const api = {
 
   /** The text of a document to teach a lesson from (PDF, Word or text); the file is not kept. */
   readSource: (file: File) => call<SourceText>(`/api/sources?name=${encodeURIComponent(file.name)}`, { method: 'POST', body: file }),
+  uploadImage: (file: File) => call<StoredImage>('/api/images', { method: 'POST', body: file }),
+  searchImages: (query: string) => call<ImageSearchResult[]>(`/api/images/search?q=${encodeURIComponent(query)}`),
+  importImage: (id: string) => call<StoredImage>('/api/images/import', json('POST', { id })),
 
   voices: () => call<VoiceInfo[]>('/api/speech/voices'),
   speak: (text: string, voice: string, signal?: AbortSignal) =>

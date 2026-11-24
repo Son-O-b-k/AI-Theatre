@@ -3,6 +3,7 @@
 
 import type { Element, ElementOf } from './schema'
 import { lineHeight, textWidth, wrapText } from './text'
+import { photoSize } from './images'
 import { artSize, CHART, counterExtent, tableLayout, timelineExtent } from './widgets'
 
 export interface Point {
@@ -26,6 +27,8 @@ export interface Placed {
 }
 
 export const LABEL_SIZE = 22
+/** The ring of a pin on a photo. */
+export const PIN_RADIUS = 15
 export const LINK_LABEL_SIZE = 18
 const LABEL_GAP = 12
 
@@ -58,6 +61,12 @@ export function shapeExtent(el: Element): { hw: number; hh: number } | null {
       const { width, height } = tableLayout(el)
       return { hw: width / 2, hh: height / 2 }
     }
+    case 'photo': {
+      const { w, h } = photoSize(el)
+      return { hw: w / 2, hh: h / 2 }
+    }
+    case 'pin':
+      return { hw: PIN_RADIUS, hh: PIN_RADIUS }
     case 'link':
     case 'group':
       return null

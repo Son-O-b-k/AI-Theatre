@@ -1,6 +1,6 @@
 import { LESSON_RULES } from '../../content/lesson-rules'
 import { DEFAULT_LANGUAGE } from '../../shared/languages'
-import type { ChatMessage } from '../../shared/protocol'
+import type { ChatMessage, LessonImage } from '../../shared/protocol'
 import { ICON_NAMES, ILLUSTRATION_NAMES, ILLUSTRATIONS } from '../scene/library'
 import { PALETTE } from '../scene/palette'
 import { sceneToLines } from '../scene/scene'
@@ -173,6 +173,34 @@ const FORMAT_NOTES: Record<Format, string> = {
 export function inFormat(messages: ChatMessage[], format: Format | undefined): ChatMessage[] {
   const note = FORMAT_NOTES[format ?? 'landscape']
   if (!note) return messages
+  const last = messages[messages.length - 1]
+  return [...messages.slice(0, -1), { ...last, content: `${last.content}\n\n${note}` }]
+}
+
+/**
+ * Offers the creator's pictures. The model cannot see them, so each comes with the creator's
+ * description and its named spots; the syntax is only described when there are pictures to use.
+ */
+export function withPictures(messages: ChatMessage[], images: LessonImage[] | undefined, planning = false): ChatMessage[] {
+  if (!images?.length) return messages
+  const quote = (text: string) => JSON.stringify(text.replace(/[\r\n]+/g, ' ').slice(0, 300))
+  const list = images
+    .map((image) => {
+      const spots = image.spots.length ? `; spots: ${image.spots.map((spot) => quote(spot.name)).join(', ')}` : ''
+      const shape = image.width > image.height * 1.2 ? 'wide' : image.height > image.width * 1.2 ? 'tall' : 'squarish'
+      return `- "${image.id}": ${quote(image.about)} (${shape}${spots})`
+    })
+    .join('\n')
+  const note = planning
+    ? `The creator gave these pictures for the lesson; plan chapters that can show them where they help:\n${list}`
+    : `PICTURES
+The creator gave these pictures (you cannot see them; trust the descriptions):
+${list}
+Show a picture where it helps the explanation, at most one per board:
+- {"op":"el","id":"p1","kind":"photo","image":"img1","label":"Onion skin under a microscope"} the picture, framed. Add "look":"sketch" to have it drawn in as a sketch.
+- {"op":"el","id":"n1","kind":"pin","on":"p1","spot":"nucleus","label":"Nucleus"} a marker on one of the picture's spots, with its label. Only use spots listed above.
+- In a beat, {"zoom":"p1","spot":"nucleus"} moves in close on a spot (or a pin's id), and {"zoom":"p1"} moves back out. While zoomed in, the rest of the board steps aside.
+Build up: show the picture, then pins one by one as the narration names them, zoom in to look closer, zoom out before moving on.`
   const last = messages[messages.length - 1]
   return [...messages.slice(0, -1), { ...last, content: `${last.content}\n\n${note}` }]
 }

@@ -15,7 +15,7 @@
     "preview:content": "npm run check:content && tsx scripts/preview-content.ts",
     "admin": "tsx server/admin.ts",
     "pretest": "npm run check:content",
-    "test": "tsx --test scripts/content.test.ts src/scene/scene.test.ts server/billing/billing.test.ts server/accounts.test.ts server/lessons/jobs.test.ts server/features.test.ts server/sources.test.ts"
+    "test": "tsx --test scripts/content.test.ts src/scene/scene.test.ts server/billing/billing.test.ts server/accounts.test.ts server/lessons/jobs.test.ts server/features.test.ts server/sources.test.ts server/images.test.ts"
   },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "1.1.0",

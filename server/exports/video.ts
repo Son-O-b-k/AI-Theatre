@@ -18,6 +18,7 @@ import { clipFile } from '../speech'
 import { stageFonts } from './fonts'
 import { chapterFrames, FPS } from './frames'
 import type { SegmentJob } from './video-worker'
+import { imageUrls, readImage } from '../images'
 
 const SAMPLE_RATE = 24_000
 /** Soundtracks play under the narration. */
@@ -103,6 +104,12 @@ export async function exportVideo(options: VideoOptions): Promise<void> {
     const workers = Math.max(1, Math.min(availableParallelism() - 2, Math.ceil(totalFrames / (FPS * 10))))
     const size = Math.ceil(totalFrames / workers)
     const fontFiles = await stageFonts()
+    // The renderer cannot fetch: the pictures the chapters show are handed to it.
+    const images: Record<string, Uint8Array> = {}
+    for (const url of imageUrls(options.chapters.map((c) => c.scene))) {
+      const data = await readImage(url)
+      if (data) images[url] = new Uint8Array(data)
+    }
     let rendered = 0
     const segments = Array.from({ length: workers }, (_, i) => join(work, `segment-${i}.mp4`))
     await Promise.all(
@@ -112,6 +119,7 @@ export async function exportVideo(options: VideoOptions): Promise<void> {
           brand: options.brand,
           captions: options.captions,
           fontFiles,
+          images,
           from: i * size,
           to: Math.min(totalFrames, (i + 1) * size),
           ffmpeg,

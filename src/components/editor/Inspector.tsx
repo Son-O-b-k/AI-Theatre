@@ -196,6 +196,21 @@ function Fields({ scene, el, set }: { scene: Scene; el: Element; set(fields: Rec
       )
     case 'dot':
       return <p className="text-xs text-dim">A dot that a step sends along an arrow. Removing it also removes that trip from the step.</p>
+    case 'photo':
+      return (
+        <>
+          {label}
+          <Choice label="Look" value={el.look ?? 'photo'} options={['photo', 'sketch']} onPick={(look) => set({ look })} />
+          {el.credit && <p className="text-xs text-dim">{el.credit}</p>}
+        </>
+      )
+    case 'pin':
+      return (
+        <>
+          {label}
+          <p className="text-xs text-dim">Marks “{el.spot}” on {nameOf(scene, el.on)}. Removing the picture removes its pins.</p>
+        </>
+      )
   }
 }
 

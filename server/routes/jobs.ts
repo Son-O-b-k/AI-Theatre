@@ -1,8 +1,22 @@
 import { Hono } from 'hono'
 import { streamSSE } from 'hono/streaming'
 import { z } from 'zod'
-import { MAX_SOURCE_CHARS, type JobEvent } from '../../shared/protocol'
-import { FORMATS } from '../../src/scene/schema'
+import { MAX_LESSON_IMAGES, MAX_SOURCE_CHARS, type JobEvent } from '../../shared/protocol'
+import { FORMATS, IMAGE_URL } from '../../src/scene/schema'
+
+const LessonImageSchema = z.object({
+  id: z.string().regex(/^[\w-]{1,24}$/),
+  url: z.string().regex(IMAGE_URL),
+  width: z.number().int().min(1).max(20_000),
+  height: z.number().int().min(1).max(20_000),
+  about: z.string().trim().max(300).default(''),
+  look: z.enum(['photo', 'sketch']).default('photo'),
+  spots: z
+    .array(z.object({ name: z.string().trim().min(1).max(40), x: z.number().min(0).max(1), y: z.number().min(0).max(1) }))
+    .max(12)
+    .default([]),
+  credit: z.string().trim().max(200).optional(),
+})
 import type { Jobs } from '../lessons/jobs'
 import { requireAccount, type AppEnv, type Deps } from './context'
 
@@ -17,6 +31,7 @@ export const JobRequestSchema = z.object({
   language: z.string().optional(),
   format: z.enum(FORMATS).optional(),
   source: z.string().trim().max(MAX_SOURCE_CHARS + 1000).optional(),
+  images: z.array(LessonImageSchema).max(MAX_LESSON_IMAGES).optional(),
 })
 
 /** Lesson generation on the server, and the chapters it delivers. */

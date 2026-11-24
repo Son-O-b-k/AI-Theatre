@@ -12,7 +12,7 @@ import {
   X,
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { AccountInfo } from '../shared/protocol'
+import type { AccountInfo, LessonImage } from '../shared/protocol'
 import { api, ApiError } from './api'
 import { BillingDialog } from './components/BillingDialog'
 import { ExportCard, useBackgroundExport } from './components/ExportCard'
@@ -179,12 +179,12 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
     setNotice('Thank you! Your plan is active.')
   }, [onAccountChange])
 
-  const run = async (runMode: Mode, text: string, source?: string) => {
+  const run = async (runMode: Mode, text: string, source?: string, images?: LessonImage[]) => {
     setError(null)
     const refining = runMode === 'refine' ? output : null
     layout.setEditing(null)
     setSelected(LIVE)
-    await generator.run(runMode, text, runMode === 'teach' ? language : (project?.language ?? DEFAULT_LANGUAGE), runMode === 'teach' || !project ? format : lessonFormat(project), source)
+    await generator.run(runMode, text, runMode === 'teach' ? language : (project?.language ?? DEFAULT_LANGUAGE), runMode === 'teach' || !project ? format : lessonFormat(project), source, images)
     if (refining) selectIfWatchingLive(refining.id)
   }
 

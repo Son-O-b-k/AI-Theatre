@@ -129,6 +129,54 @@ export interface JobRequest extends ModelTarget {
   format?: 'landscape' | 'portrait' | 'square'
   /** Material to teach from (a document's text, at most MAX_SOURCE_CHARS); new lessons and chapters only. */
   source?: string
+  /** The creator's own pictures, which the lesson may show, point at and zoom into. */
+  images?: LessonImage[]
+}
+
+export const MAX_LESSON_IMAGES = 8
+
+/** A picture a creator gave a lesson (`POST /api/images`, or imported from a free library). */
+export interface LessonImage {
+  /** What the model calls it in this request ("img1"). */
+  id: string
+  /** Where it is served: `/api/images/<hash>.<ext>`. */
+  url: string
+  width: number
+  height: number
+  /** What it shows, in the creator's words: the model cannot see the picture. */
+  about: string
+  /** Shown as the photo, or traced as a drawing that sketches itself in. */
+  look: 'photo' | 'sketch'
+  /** Named places in the picture (0..1 from its top left) that a lesson can point at and zoom into. */
+  spots: ImageSpot[]
+  /** Who made it and its licence, shown on the picture (free library images). */
+  credit?: string
+}
+
+export interface ImageSpot {
+  name: string
+  x: number
+  y: number
+}
+
+/** `POST /api/images`: a stored picture. */
+export interface StoredImage {
+  url: string
+  width: number
+  height: number
+  credit?: string
+}
+
+/** `GET /api/images/search`: openly licensed pictures (Openverse) that may be used commercially and adapted. */
+export interface ImageSearchResult {
+  id: string
+  title: string
+  thumbnail: string
+  width?: number
+  height?: number
+  credit: string
+  /** The page the picture comes from. */
+  page: string
 }
 
 /**

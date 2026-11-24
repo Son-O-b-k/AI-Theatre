@@ -19,6 +19,8 @@ export const KIND_NAMES: Record<ElementKind, string> = {
   table: 'Table',
   group: 'Frame',
   link: 'Arrow',
+  photo: 'Picture',
+  pin: 'Pin',
 }
 
 const find = (scene: Scene, id: string) => scene.elements.find((el) => el.id === id)
@@ -34,6 +36,12 @@ export function nameOf(scene: Scene, id: string): string {
   if (el.kind === 'illustration') return el.art.replace(/-/g, ' ')
   if (el.kind === 'counter') return `${el.prefix}${el.to}${el.suffix}`
   return KIND_NAMES[el.kind]
+}
+
+/** A spot of a photo, or the label of a pin on it. */
+const spotName = (scene: Scene, spot: string) => {
+  const pin = find(scene, spot)
+  return pin?.kind === 'pin' ? (pin.label ?? pin.spot) : spot
 }
 
 const list = (names: string[]) => (names.length <= 1 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`)
@@ -60,6 +68,8 @@ export function describeAction(scene: Scene, action: Action): string {
       return `Pulses ${names}`
     case 'travel':
       return `Sends a dot ${action.reverse ? 'back ' : ''}along ${nameOf(scene, action.along)}`
+    case 'zoom':
+      return action.spot ? `Zooms ${names} in on ${spotName(scene, action.spot)}` : `Zooms ${names} back out`
   }
 }
 
@@ -81,7 +91,8 @@ export function updateElement(scene: Scene, id: string, fields: Record<string, u
 
 /** Takes an element out of the chapter, with the arrows to it and every step's mention of it. */
 export function removeElement(scene: Scene, id: string): Scene {
-  const gone = new Set([id, ...scene.elements.filter((el) => el.kind === 'link' && (el.from === id || el.to === id)).map((el) => el.id)])
+  const attached = scene.elements.filter((el) => (el.kind === 'link' && (el.from === id || el.to === id)) || (el.kind === 'pin' && el.on === id))
+  const gone = new Set([id, ...attached.map((el) => el.id)])
   const elements = scene.elements.flatMap((el): Element[] => {
     if (gone.has(el.id)) return []
     if (el.kind !== 'group') return [el]

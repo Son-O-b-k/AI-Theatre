@@ -1,10 +1,11 @@
-import { ArrowUp, FileText, Film, Globe, GraduationCap, Loader2, Paperclip, PenLine, RectangleHorizontal, RectangleVertical, Square, X, type LucideIcon } from 'lucide-react'
+import { ArrowUp, FileText, Film, Globe, GraduationCap, ImagePlus, Loader2, Paperclip, PenLine, RectangleHorizontal, RectangleVertical, Square, X, type LucideIcon } from 'lucide-react'
 import { useLayoutEffect, useRef, useState } from 'react'
 import { DEFAULT_LANGUAGE, LANGUAGES } from '../../shared/languages'
-import { MAX_SOURCE_CHARS, type SourceText } from '../../shared/protocol'
+import { MAX_LESSON_IMAGES, MAX_SOURCE_CHARS, type LessonImage, type SourceText } from '../../shared/protocol'
 import { FORMAT_LABELS, FORMATS, type Format } from '../scene/schema'
 import { api } from '../api'
 import type { Mode } from '../hooks/useGenerator'
+import { PictureChips, PictureDialog } from './PicturePicker'
 import { Button } from './ui/Button'
 import { cx } from './ui/cx'
 
@@ -51,8 +52,11 @@ interface Props {
   language?: { value: string; onChange(value: string): void; locked: boolean; available: boolean }
   /** The shape of a new lesson's video, shown for new lessons. */
   format?: { value: Format; onChange(value: Format): void }
-  /** `source` is the text of a document to teach from, attached for new lessons and chapters. */
-  onSubmit(mode: Mode, prompt: string, source?: string): void
+  /**
+   * `source` is the text of a document to teach from, attached for new lessons and chapters;
+   * `images` are the creator's pictures the lesson may show.
+   */
+  onSubmit(mode: Mode, prompt: string, source?: string, images?: LessonImage[]): void
   onStop(): void
 }
 
@@ -78,6 +82,9 @@ export function PromptBox({
   const [source, setSource] = useState<SourceText | null>(null)
   const [reading, setReading] = useState(false)
   const [sourceError, setSourceError] = useState<string | null>(null)
+  const [images, setImages] = useState<LessonImage[]>([])
+  /** The picture being added ('new') or changed (its index). */
+  const [picturing, setPicturing] = useState<number | 'new' | null>(null)
   const sourceAllowed = current.mode !== 'refine'
   const attached = sourceAllowed ? source : null
   const canSubmit = !busy && !disabled && !reading && (value.trim().length > 0 || attached !== null)
@@ -104,7 +111,8 @@ export function PromptBox({
 
   const submit = () => {
     if (!canSubmit) return
-    onSubmit(current.mode, value.trim() || topicOf(attached!), attached?.text)
+    onSubmit(current.mode, value.trim() || topicOf(attached!), attached?.text, images.length ? images : undefined)
+    setImages([])
     if (current.mode !== 'refine') {
       onValueChange('')
       setSource(null)
@@ -163,6 +171,7 @@ export function PromptBox({
             </span>
           </div>
         )}
+        {images.length > 0 && <PictureChips images={images} disabled={busy} onEdit={setPicturing} onRemove={(index) => setImages((current) => current.filter((_, i) => i !== index))} />}
         {/* Wraps on a phone rather than pushing the send button out of the box. */}
         <div className="flex flex-wrap items-center gap-1.5 px-2.5 pt-1 pb-2.5">
           {modes.map(({ mode: option, label }) => {
@@ -267,6 +276,17 @@ export function PromptBox({
             </>
           )}
 
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setPicturing('new')}
+            disabled={busy || images.length >= MAX_LESSON_IMAGES}
+            title="Your own pictures, or free ones: the lesson shows them, points at their parts and zooms in"
+          >
+            <ImagePlus className="size-3.5" />
+            <span className="max-sm:hidden">Pictures</span>
+          </Button>
+
           <div className="ml-auto flex min-w-0 items-center gap-1.5">
             {busy && (
               <span className="flex min-w-0 items-center gap-2 text-xs text-dim">
@@ -295,6 +315,17 @@ export function PromptBox({
         </div>
       </div>
       {sourceError && sourceAllowed && <p className="mt-1.5 px-2 text-xs text-danger">{sourceError}</p>}
+      {picturing !== null && (
+        <PictureDialog
+          image={picturing === 'new' ? undefined : images[picturing]}
+          nextId={`img${Math.max(0, ...images.map((image) => Number(image.id.replace(/\D/g, '')) || 0)) + 1}`}
+          onClose={() => setPicturing(null)}
+          onSave={(image) => {
+            setImages((current) => (picturing === 'new' ? [...current, image] : current.map((other, i) => (i === picturing ? image : other))))
+            setPicturing(null)
+          }}
+        />
+      )}
       {warnings.length > 0 && !busy && (
         <p className="mt-1.5 px-2 text-xs text-faint" title={warnings.join('\n')}>
           The AI's last answer had {warnings.length} small problems that were skipped or could not be fixed (hover to

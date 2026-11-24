@@ -10,7 +10,9 @@ import { DEFAULT_PROVIDER_ID, type ChatMessage, type Delivery, type JobEvent, ty
 import { generateScene, planLesson, type Complete } from '../../src/ai/generate'
 import type { Chapter } from '../../src/ai/prompts'
 import { DEFAULT_LANGUAGE } from '../../shared/languages'
-import { chapterMessages, inFormat, inLanguage, planMessages, refineMessages, sceneMessages } from '../../src/ai/prompts'
+import { chapterMessages, inFormat, inLanguage, planMessages, refineMessages, sceneMessages, withPictures } from '../../src/ai/prompts'
+import { withImages } from '../../src/scene/images'
+import { finalizeScene } from '../../src/scene/scene'
 import { record, unrecorded, withNarration } from '../../src/narration'
 import { newOutput, reviseOutput, titleFrom, type Output, type Turn } from '../../src/project'
 import type { Scene } from '../../src/scene/schema'
@@ -285,12 +287,15 @@ export class Jobs {
     const { format } = request
     const scene = async (label: string, messages: ChatMessage[]): Promise<Scene> => {
       job.emit({ type: 'status', text: `${label}: waiting for the model…` })
-      const result = await generateScene(complete, inFormat(inLanguage(messages, language), format), signal, (partial) => {
-        job.emit({ type: 'live', scene: { ...partial, format } })
+      const result = await generateScene(complete, inFormat(inLanguage(withPictures(messages, request.images), language), format), signal, (partial) => {
+        job.emit({ type: 'live', scene: { ...withImages(partial, request.images), format } })
         job.emit({ type: 'status', text: `${label}: ${partial.boards.length} boards, ${partial.elements.length} shapes, ${partial.beats.length} beats` })
       })
-      for (const warning of result.warnings) job.emit({ type: 'warning', message: warning })
-      return narrated(label, { ...result.scene, format })
+      const warn = (warning: string) => job.emit({ type: 'warning', message: warning })
+      result.warnings.forEach(warn)
+      // The creator's pictures are filled in, then the timing is worked out again with them.
+      const written = request.images?.length || result.scene.elements.some((el) => el.kind === 'photo') ? finalizeScene(withImages(result.scene, request.images, warn)) : result.scene
+      return narrated(label, { ...written, format })
     }
 
     // Ollama reads only its context window (often a few thousand tokens unless raised) and drops the rest unannounced.
@@ -317,7 +322,7 @@ export class Jobs {
         let outline = resume?.outline
         if (!outline) {
           job.emit({ type: 'status', text: 'Planning the lesson…' })
-          outline = await planLesson(complete, inLanguage(planMessages(request.prompt, request.source), language), signal)
+          outline = await planLesson(complete, inLanguage(withPictures(planMessages(request.prompt, request.source), request.images, true), language), signal)
           await this.db.run('UPDATE jobs SET outline = ? WHERE id = ?', JSON.stringify(outline), job.id)
         }
         const titles = outline.map((chapter) => chapter.title)
