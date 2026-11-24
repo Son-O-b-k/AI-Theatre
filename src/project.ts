@@ -1,6 +1,6 @@
 import { compile } from './scene/compile'
 import { finalizeScene } from './scene/scene'
-import type { Scene } from './scene/schema'
+import { DEFAULT_FORMAT, SCENE_VERSION, type Format, type Scene } from './scene/schema'
 import { toTheatreState, type TheatreState } from './scene/theatre'
 
 export interface Turn {
@@ -28,7 +28,30 @@ export interface Project {
   updatedAt: string
   /** The language its chapters are written and narrated in (shared/languages.ts); English when unset. */
   language?: string
+  /** The shape of its stage and video (src/scene/schema.ts); landscape when unset. */
+  format?: Format
   outputs: Output[]
+}
+
+/** A lesson's format: its own, or its first chapter's (lessons from before the setting existed). */
+export const lessonFormat = (project: Pick<Project, 'format' | 'outputs'>): Format =>
+  project.format ?? project.outputs[0]?.scene.format ?? DEFAULT_FORMAT
+
+/** Chapters whose motion was fine-tuned in Studio; changing the format lays them out again and drops it. */
+export const fineTuned = (project: Project) => project.outputs.filter((o) => o.scene.keys)
+
+/**
+ * The lesson in another format: every chapter is laid out again for the new stage, so keyframes
+ * fine-tuned in Studio are dropped. Chapters in an older scene format are left as they are.
+ */
+export function reformatted(project: Project, format: Format): Project {
+  return {
+    ...project,
+    format,
+    outputs: project.outputs.map((o) =>
+      o.scene.version === SCENE_VERSION && (o.scene.format ?? DEFAULT_FORMAT) !== format ? retimed(o, { ...o.scene, format, keys: undefined }) : o,
+    ),
+  }
 }
 
 export const shortId = () => crypto.randomUUID().slice(0, 8)

@@ -9,7 +9,7 @@ import { LESSON_TOKENS } from '../../shared/plans'
 import { DEFAULT_PROVIDER_ID, type ChatMessage, type Delivery, type JobEvent, type JobMode, type JobRequest } from '../../shared/protocol'
 import { generateScene, planLesson, type Complete } from '../../src/ai/generate'
 import { DEFAULT_LANGUAGE } from '../../shared/languages'
-import { chapterMessages, inLanguage, planMessages, refineMessages, sceneMessages } from '../../src/ai/prompts'
+import { chapterMessages, inFormat, inLanguage, planMessages, refineMessages, sceneMessages } from '../../src/ai/prompts'
 import { record, unrecorded, withNarration } from '../../src/narration'
 import { newOutput, reviseOutput, titleFrom, type Output, type Turn } from '../../src/project'
 import type { Scene } from '../../src/scene/schema'
@@ -234,14 +234,15 @@ export class Jobs {
     }
 
     const language = request.language ?? DEFAULT_LANGUAGE
+    const { format } = request
     const scene = async (label: string, messages: ChatMessage[]): Promise<Scene> => {
       job.emit({ type: 'status', text: `${label}: waiting for the model…` })
-      const result = await generateScene(complete, inLanguage(messages, language), signal, (partial) => {
-        job.emit({ type: 'live', scene: partial })
+      const result = await generateScene(complete, inFormat(inLanguage(messages, language), format), signal, (partial) => {
+        job.emit({ type: 'live', scene: { ...partial, format } })
         job.emit({ type: 'status', text: `${label}: ${partial.boards.length} boards, ${partial.elements.length} shapes, ${partial.beats.length} beats` })
       })
       for (const warning of result.warnings) job.emit({ type: 'warning', message: warning })
-      return narrated(label, result.scene)
+      return narrated(label, { ...result.scene, format })
     }
 
     // Ollama reads only its context window (often a few thousand tokens unless raised) and drops the rest unannounced.

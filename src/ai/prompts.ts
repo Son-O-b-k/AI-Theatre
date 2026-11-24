@@ -4,7 +4,7 @@ import type { ChatMessage } from '../../shared/protocol'
 import { ICON_NAMES, ILLUSTRATION_NAMES, ILLUSTRATIONS } from '../scene/library'
 import { PALETTE } from '../scene/palette'
 import { sceneToLines } from '../scene/scene'
-import { SCENE_VERSION, type Scene } from '../scene/schema'
+import { SCENE_VERSION, type Format, type Scene } from '../scene/schema'
 
 export interface Chapter {
   title: string
@@ -160,6 +160,21 @@ Revise it: ${prompt}
 Reply with the complete revised scene in the format described above.`,
     },
   ]
+}
+
+const FORMAT_NOTES: Record<Format, string> = {
+  landscape: '',
+  portrait:
+    'The stage is a vertical video (9:16): tall and narrow, watched on a phone. Prefer "column" and "flow" layouts (a flow runs downwards), at most 5 shapes on a board, short labels and short board titles.',
+  square: 'The stage is square (1:1). Prefer "grid", "column" and "cycle" layouts, at most 6 shapes on a board, and short labels.',
+}
+
+/** Tells the model the stage's shape, so its boards fit a tall or square stage. */
+export function inFormat(messages: ChatMessage[], format: Format | undefined): ChatMessage[] {
+  const note = FORMAT_NOTES[format ?? 'landscape']
+  if (!note) return messages
+  const last = messages[messages.length - 1]
+  return [...messages.slice(0, -1), { ...last, content: `${last.content}\n\n${note}` }]
 }
 
 /** Asks for the lesson in another language; ids and JSON stay English so parsing is unchanged. */

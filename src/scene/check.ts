@@ -6,7 +6,7 @@
 import type { Resolved } from './compile'
 import { bounds, linkGeometry, type Rect } from './geometry'
 import { crossings, MIN_LINK } from './layout'
-import { STAGE, type AnimatedProp, type Key, type SceneElement } from './schema'
+import { type AnimatedProp, type Key, type SceneElement } from './schema'
 
 const STEP = 0.25
 const VISIBLE = 0.4
@@ -29,9 +29,10 @@ export function checkScene(scene: Resolved): string[] {
       .filter((el) => visible.includes(el))
       .map((el) => ({ el, rect: bounds({ el, x: value(el, 'x', t), y: value(el, 'y', t), scale: value(el, 'scale', t) })! }))
 
+    const { width, height } = scene.stage
     for (const { el, rect } of boxes) {
-      if (rect.x0 < -TOLERANCE || rect.y0 < -TOLERANCE || rect.x1 > STAGE.width + TOLERANCE || rect.y1 > STAGE.height + TOLERANCE) {
-        report(`off:${el.id}`, `"${el.id}" (with its label) goes past the edge of the 1280x720 stage at ${t}s`)
+      if (rect.x0 < -TOLERANCE || rect.y0 < -TOLERANCE || rect.x1 > width + TOLERANCE || rect.y1 > height + TOLERANCE) {
+        report(`off:${el.id}`, `"${el.id}" (with its label) goes past the edge of the ${width}x${height} stage at ${t}s`)
       }
     }
     for (const link of visible) {

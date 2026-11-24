@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { streamSSE } from 'hono/streaming'
 import { z } from 'zod'
 import { MAX_SOURCE_CHARS, type JobEvent } from '../../shared/protocol'
+import { FORMATS } from '../../src/scene/schema'
 import type { Jobs } from '../lessons/jobs'
 import { requireAccount, type AppEnv, type Deps } from './context'
 
@@ -14,6 +15,7 @@ export const JobRequestSchema = z.object({
   voice: z.string(),
   output: z.unknown().optional(),
   language: z.string().optional(),
+  format: z.enum(FORMATS).optional(),
   source: z.string().trim().max(MAX_SOURCE_CHARS + 1000).optional(),
 })
 

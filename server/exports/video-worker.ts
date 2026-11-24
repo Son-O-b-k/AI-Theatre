@@ -3,8 +3,7 @@
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { parentPort, workerData } from 'node:worker_threads'
-import { STAGE } from '../../src/scene/schema'
-import { FPS, renderFrames, type RenderOptions } from './frames'
+import { FPS, renderFrames, videoStage, type RenderOptions } from './frames'
 
 export interface SegmentJob extends Omit<RenderOptions, 'onFrame' | 'onProgress'> {
   ffmpeg: string
@@ -12,9 +11,10 @@ export interface SegmentJob extends Omit<RenderOptions, 'onFrame' | 'onProgress'
 }
 
 const job = workerData as SegmentJob
+const stage = videoStage(job.chapters)
 const encoder = spawn(job.ffmpeg, [
   '-y', '-loglevel', 'error',
-  '-f', 'rawvideo', '-pix_fmt', 'rgba', '-s', `${STAGE.width}x${STAGE.height}`, '-r', String(FPS), '-i', 'pipe:0',
+  '-f', 'rawvideo', '-pix_fmt', 'rgba', '-s', `${stage.width}x${stage.height}`, '-r', String(FPS), '-i', 'pipe:0',
   '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p',
   job.output,
 ])

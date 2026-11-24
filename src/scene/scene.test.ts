@@ -14,6 +14,7 @@ import { compile, speechSeconds } from './compile'
 import { applyOp, emptyScene, finalizeScene, sceneToLines } from './scene'
 import { parseOp, type Scene } from './schema'
 import { fromTheatreState, toTheatreState } from './theatre'
+import { fineTuned, lessonFormat, reformatted } from '../project'
 
 const GEOMETRY_PROBLEM = /overlap|edge of the|crosses|too short/
 
@@ -147,6 +148,36 @@ describe('layout', () => {
       const { scene } = build(lines)
       assert.deepEqual(geometryProblems(scene), [])
     })
+  }
+})
+
+describe('vertical and square lessons', () => {
+  test('changing a lesson\'s shape lays every chapter out again, dropping fine-tuned motion', () => {
+    const { scene } = build(CASES['the prompt example'])
+    const turn = { prompt: 'p', provider: 'x', model: 'm', at: '' }
+    const tuned = { ...newOutput('One', scene, turn), scene: { ...scene, keys: [] } }
+    const project = { id: 'p', name: 'P', createdAt: '', updatedAt: '', outputs: [tuned, newOutput('Two', scene, turn)] }
+    assert.equal(lessonFormat(project), 'landscape')
+    assert.equal(fineTuned(project).length, 1)
+
+    const vertical = reformatted(project, 'portrait')
+    assert.equal(lessonFormat(vertical), 'portrait')
+    for (const output of vertical.outputs) {
+      assert.equal(output.scene.format, 'portrait')
+      assert.equal(output.scene.keys, undefined)
+      assert.equal(output.revision, 2)
+      assert.equal(compile(output.scene).stage.width, 720)
+    }
+    assert.equal(reformatted(vertical, 'portrait').outputs[0], vertical.outputs[0], 'the same shape changes nothing')
+  })
+
+  for (const format of ['portrait', 'square'] as const) {
+    for (const [name, lines] of Object.entries(CASES)) {
+      test(`${format}: ${name}: no overlaps, nothing off stage, links clear`, () => {
+        const { scene } = build(lines)
+        assert.deepEqual(geometryProblems({ ...scene, format }), [])
+      })
+    }
   }
 })
 

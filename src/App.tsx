@@ -34,9 +34,9 @@ import { useProjects } from './hooks/useProjects'
 import { useProviders } from './hooks/useProviders'
 import { useVoice } from './hooks/useVoice'
 import { BROWSER_VOICE, unrecorded } from './narration'
-import { editNarration, editScene, type Output, type Project } from './project'
+import { editNarration, editScene, fineTuned, lessonFormat, reformatted, type Output, type Project } from './project'
 import { emptyScene } from './scene/scene'
-import { SCENE_VERSION } from './scene/schema'
+import { DEFAULT_FORMAT, FORMATS, SCENE_VERSION, type Format } from './scene/schema'
 import { DEFAULT_LANGUAGE } from '../shared/languages'
 
 /** While fine-tuning motion, the stage sits between Studio's outline (left), details panel (right) and timeline (bottom). */
@@ -44,6 +44,27 @@ const STUDIO_CLEARANCE = 'pl-[190px] pr-[250px] pb-[40vh]'
 
 /** Shown on stage while waiting for the model's first line. */
 const EMPTY_SCENE = emptyScene()
+
+/**
+ * In the stacked layout the page scrolls, so the player needs an explicit height: a full-width stage
+ * in the lesson's format plus its controls. (Written out in full so Tailwind generates each class.)
+ */
+const STACKED_HEIGHT: Record<Format, string> = {
+  landscape: 'h-[calc((100vw-2rem)*9/16+4rem)] flex-none max-sm:h-[calc((100vw-2rem)*9/16+7rem)]',
+  portrait: 'h-[calc((100vw-2rem)*16/9+4rem)] flex-none max-sm:h-[calc((100vw-2rem)*16/9+7rem)]',
+  square: 'h-[calc(100vw-2rem+4rem)] flex-none max-sm:h-[calc(100vw-2rem+7rem)]',
+}
+
+const FORMAT_KEY = 'ai-theatre:format'
+/** The format new lessons start in: the one chosen last on this browser. */
+function savedFormat(): Format {
+  try {
+    const saved = localStorage.getItem(FORMAT_KEY)
+    return FORMATS.find((f) => f === saved) ?? DEFAULT_FORMAT
+  } catch {
+    return DEFAULT_FORMAT
+  }
+}
 
 const LESSON_MODES: ModeOption[] = [
   {
@@ -72,6 +93,15 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
   const [teamOpen, setTeamOpen] = useState<WorkspaceTab | false>(false)
   const [shareOpen, setShareOpen] = useState(false)
   const [language, setLanguage] = useState<string>(DEFAULT_LANGUAGE)
+  const [format, setFormatState] = useState<Format>(savedFormat)
+  const setFormat = (next: Format) => {
+    setFormatState(next)
+    try {
+      localStorage.setItem(FORMAT_KEY, next)
+    } catch {
+      // Not remembering the choice is fine.
+    }
+  }
   const [exporting, setExporting] = useState<'mp4' | 'scorm' | null>(null)
   const background = useBackgroundExport()
   const onError = useCallback((e: unknown) => {
@@ -93,6 +123,7 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
   const { billing } = account
   const { project } = projects
   const outputs = project?.outputs ?? []
+  const currentFormat = project ? lessonFormat(project) : format
 
   /** The chapter on screen: an output id, LIVE for the one being written, or null for the first. */
   const [selected, setSelected] = useState<string | null>(null)
@@ -150,7 +181,7 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
     const refining = runMode === 'refine' ? output : null
     layout.setEditing(null)
     setSelected(LIVE)
-    await generator.run(runMode, text, runMode === 'teach' ? language : (project?.language ?? DEFAULT_LANGUAGE), source)
+    await generator.run(runMode, text, runMode === 'teach' ? language : (project?.language ?? DEFAULT_LANGUAGE), runMode === 'teach' || !project ? format : lessonFormat(project), source)
     if (refining) selectIfWatchingLive(refining.id)
   }
 
@@ -162,6 +193,14 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
   }
 
   /** A lesson has one voice: choosing one records every chapter that is not narrated with it yet. */
+  /** Lays every chapter out again for another stage shape; fine-tuned motion is lost, so that is asked first. */
+  const changeFormat = (next: Format) => {
+    if (!project || next === currentFormat || generator.busy) return
+    const tuned = fineTuned(project).length
+    if (tuned > 0 && !confirm(`Changing the shape lays every chapter out again, and the motion you fine-tuned in ${tuned === 1 ? '1 chapter' : `${tuned} chapters`} will be lost. Change it?`)) return
+    projects.update((p) => reformatted(p, next))
+  }
+
   const changeVoice = (next: string) => {
     if (voices.find((v) => v.id === next)?.premium && !billing.features.includes('premiumVoices')) {
       setBillingOpen(true)
@@ -429,17 +468,12 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
               premiumLocked={!billing.features.includes('premiumVoices')}
               onVoiceChange={changeVoice}
               recording={generator.busy}
-              // Stacked layout scrolls, so the player needs an explicit height: a full-width 16:9 stage plus controls.
-              className={
-                layout.editing === 'motion'
-                  ? STUDIO_CLEARANCE
-                  : layout.narrow
-                    ? 'h-[calc((100vw-2rem)*9/16+4rem)] flex-none max-sm:h-[calc((100vw-2rem)*9/16+7rem)]'
-                    : undefined
-              }
+              format={currentFormat}
+              onFormatChange={changeFormat}
+              className={layout.editing === 'motion' ? STUDIO_CLEARANCE : layout.narrow ? STACKED_HEIGHT[currentFormat] : undefined}
             />
 
-            {layout.phonePortrait && (
+            {layout.phonePortrait && currentFormat === 'landscape' && (
               <p className="-mt-2 flex items-center gap-2 px-1 text-xs text-dim">
                 <Smartphone className="size-3.5 shrink-0 rotate-90" />
                 Turn your phone sideways and tap fullscreen for a bigger, readable stage.
@@ -459,6 +493,7 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
                 status={generator.status || 'Generating…'}
                 warnings={generator.warnings}
                 language={{ value: language, onChange: setLanguage, locked: !billing.features.includes('premiumVoices'), available: otherLanguages }}
+                format={{ value: format, onChange: setFormat }}
                 onSubmit={run}
                 onStop={generator.stop}
               />
@@ -478,6 +513,7 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
             status={generator.status}
             warnings={generator.warnings}
             language={{ value: language, onChange: setLanguage, locked: !billing.features.includes('premiumVoices'), available: otherLanguages }}
+            format={{ value: format, onChange: setFormat }}
             onRun={run}
             onStop={generator.stop}
             onOpen={openProject}
@@ -544,6 +580,7 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
       {shareOpen && project && (
         <ShareDialog
           projectId={project.id}
+          format={currentFormat}
           allowed={billing.features.includes('shareLinks')}
           onSeePlans={() => {
             setShareOpen(false)

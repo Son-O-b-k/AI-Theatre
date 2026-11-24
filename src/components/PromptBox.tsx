@@ -1,7 +1,8 @@
-import { ArrowUp, FileText, Film, Globe, GraduationCap, Loader2, Paperclip, PenLine, Square, X, type LucideIcon } from 'lucide-react'
+import { ArrowUp, FileText, Film, Globe, GraduationCap, Loader2, Paperclip, PenLine, RectangleHorizontal, RectangleVertical, Square, X, type LucideIcon } from 'lucide-react'
 import { useLayoutEffect, useRef, useState } from 'react'
 import { DEFAULT_LANGUAGE, LANGUAGES } from '../../shared/languages'
 import { MAX_SOURCE_CHARS, type SourceText } from '../../shared/protocol'
+import { FORMAT_LABELS, FORMATS, type Format } from '../scene/schema'
 import { api } from '../api'
 import type { Mode } from '../hooks/useGenerator'
 import { Button } from './ui/Button'
@@ -14,6 +15,7 @@ export interface ModeOption {
 }
 
 const ICONS: Record<Mode, LucideIcon> = { teach: GraduationCap, scene: Film, refine: PenLine }
+const FORMAT_ICONS: Record<Format, LucideIcon> = { landscape: RectangleHorizontal, portrait: RectangleVertical, square: Square }
 
 /** Documents a lesson can be taught from; the server reads their text (server/sources.ts). */
 const SOURCE_TYPES = '.pdf,.docx,.txt,.md,.markdown,.csv'
@@ -47,6 +49,8 @@ interface Props {
    * premium voices set up on the server (`available`).
    */
   language?: { value: string; onChange(value: string): void; locked: boolean; available: boolean }
+  /** The shape of a new lesson's video, shown for new lessons. */
+  format?: { value: Format; onChange(value: Format): void }
   /** `source` is the text of a document to teach from, attached for new lessons and chapters. */
   onSubmit(mode: Mode, prompt: string, source?: string): void
   onStop(): void
@@ -64,6 +68,7 @@ export function PromptBox({
   warnings,
   disabled,
   language,
+  format,
   onSubmit,
   onStop,
 }: Props) {
@@ -207,6 +212,31 @@ export function PromptBox({
                     </option>
                   )
                 })}
+              </select>
+            </label>
+          )}
+
+          {format && current.mode === 'teach' && (
+            <label
+              className="flex h-8 items-center gap-1.5 rounded-lg border border-line px-2 text-[13px] text-dim transition focus-within:border-accent/60 hover:border-line-strong hover:text-ink"
+              title="The shape of the lesson's video: landscape, vertical for Shorts, Reels and TikTok, or square"
+            >
+              {(() => {
+                const Icon = FORMAT_ICONS[format.value]
+                return <Icon className="size-3.5 shrink-0" />
+              })()}
+              <select
+                value={format.value}
+                onChange={(e) => format.onChange(e.target.value as Format)}
+                disabled={busy}
+                aria-label="Video shape"
+                className="cursor-pointer bg-transparent outline-none"
+              >
+                {FORMATS.map((option) => (
+                  <option key={option} value={option}>
+                    {FORMAT_LABELS[option]}
+                  </option>
+                ))}
               </select>
             </label>
           )}

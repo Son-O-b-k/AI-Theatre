@@ -9,12 +9,15 @@ import type { Brand } from '../../shared/protocol'
 import { brandResolved, brandTheatreState } from '../../src/scene/brand'
 import { compile } from '../../src/scene/compile'
 import { sampleAt } from '../../src/scene/sample'
-import { STAGE, type Scene } from '../../src/scene/schema'
+import { stageOf, type Scene, type StageFrame } from '../../src/scene/schema'
 import type { TheatreState } from '../../src/scene/theatre'
 
 export const FPS = 30
 
 export const chapterFrames = (duration: number) => Math.ceil(duration * FPS)
+
+/** A video has one size: its first chapter's format. A lesson's chapters all share the lesson's format. */
+export const videoStage = (chapters: FrameChapter[]) => stageOf(chapters[0]?.scene.format)
 
 export interface FrameChapter {
   scene: Scene
@@ -24,10 +27,11 @@ export interface FrameChapter {
 const escapeXml = (text: string) => text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)
 
 /** The caption box at the bottom of the frame, as in the player. */
-function captionSvg(text: string): string {
+function captionSvg(text: string, { width: stageWidth, height: stageHeight }: StageFrame): string {
   if (!text) return ''
   const size = 24
-  const maxChars = 70
+  // About 70 characters a line on a landscape stage, fewer on narrower ones.
+  const maxChars = Math.min(70, Math.floor((stageWidth * 0.86 - 40) / (size * 0.52)))
   const lines: string[] = []
   for (const word of text.split(/\s+/)) {
     const last = lines.at(-1)
@@ -35,10 +39,10 @@ function captionSvg(text: string): string {
     else lines.push(word)
   }
   const height = lines.length * size * 1.3 + 20
-  const width = Math.min(STAGE.width * 0.86, Math.max(...lines.map((l) => l.length)) * size * 0.52 + 40)
-  const y = STAGE.height * 0.95 - height
-  const tspans = lines.map((line, i) => `<tspan x="${STAGE.width / 2}" y="${y + 10 + size * 1.05 + i * size * 1.3}">${escapeXml(line)}</tspan>`).join('')
-  return `<rect x="${(STAGE.width - width) / 2}" y="${y}" width="${width}" height="${height}" rx="10" fill="#000" fill-opacity="0.66"/>
+  const width = Math.min(stageWidth * 0.86, Math.max(...lines.map((l) => l.length)) * size * 0.52 + 40)
+  const y = stageHeight * 0.95 - height
+  const tspans = lines.map((line, i) => `<tspan x="${stageWidth / 2}" y="${y + 10 + size * 1.05 + i * size * 1.3}">${escapeXml(line)}</tspan>`).join('')
+  return `<rect x="${(stageWidth - width) / 2}" y="${y}" width="${width}" height="${height}" rx="10" fill="#000" fill-opacity="0.66"/>
 <text font-family="Inter" font-size="${size}" font-weight="500" fill="#f3f0e8" text-anchor="middle">${tspans}</text>`
 }
 
@@ -50,7 +54,7 @@ export interface RenderOptions {
   /** The range of frames to draw, counted across the whole lesson (workers split it). */
   from: number
   to: number
-  /** Receives each frame's RGBA pixels (STAGE.width × STAGE.height × 4 bytes). */
+  /** Receives each frame's RGBA pixels (videoStage's width × height × 4 bytes). */
   onFrame(pixels: Uint8Array): Promise<void>
   onProgress(done: number, total: number): void
 }
@@ -88,10 +92,10 @@ export async function renderFrames(options: RenderOptions): Promise<void> {
       // resvg does not resolve CSS variables, so the label halo gets its colour directly.
       const svg = stage.svg.outerHTML
         .replace(/var\(--stage-bg\)/g, resolved.background)
-        .replace(/<\/svg>$/, `${options.captions && cue ? captionSvg(cue.text) : ''}</svg>`)
+        .replace(/<\/svg>$/, `${options.captions && cue ? captionSvg(cue.text, resolved.stage) : ''}</svg>`)
       if (svg !== previous) {
         const rendered = new Resvg(svg, {
-          fitTo: { mode: 'width', value: STAGE.width },
+          fitTo: { mode: 'width', value: resolved.stage.width },
           font: { fontFiles: options.fontFiles, loadSystemFonts: true, defaultFontFamily: 'Inter' },
         }).render()
         pixels = rendered.pixels

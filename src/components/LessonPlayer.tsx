@@ -20,6 +20,9 @@ import {
   Volume2,
   VolumeX,
   X,
+  RectangleHorizontal,
+  RectangleVertical,
+  Square as SquareShape,
 } from 'lucide-react'
 import { useEffect, useRef, useState, type MutableRefObject, type PointerEvent } from 'react'
 import type { Brand, VoiceInfo } from '../../shared/protocol'
@@ -31,7 +34,7 @@ import { theatreProjectId, type Output } from '../project'
 import { brandResolved, brandTheatreState } from '../scene/brand'
 import { compile } from '../scene/compile'
 import { emptyScene } from '../scene/scene'
-import { SCENE_VERSION, type Cue, type Scene } from '../scene/schema'
+import { FORMAT_LABELS, FORMATS, SCENE_VERSION, STAGES, type Cue, type Format, type Scene } from '../scene/schema'
 import { fromTheatreState, type TheatreState } from '../scene/theatre'
 import { mountScene, type Mounted } from '../stage/mount'
 import { Player } from '../stage/Player'
@@ -79,8 +82,13 @@ interface Props {
   /** Records the lesson's narration in another voice; unavailable while `recording`. */
   onVoiceChange(voice: string): void
   recording: boolean
+  /** The lesson's stage shape, and changing it (every chapter is laid out again). */
+  format: Format
+  onFormatChange(format: Format): void
   className?: string
 }
+
+const FORMAT_ICONS = { landscape: RectangleHorizontal, portrait: RectangleVertical, square: SquareShape }
 
 /** Height of the control bar plus the gap above it. */
 const CONTROLS_HEIGHT = 64
@@ -88,6 +96,8 @@ const CONTROLS_HEIGHT = 64
 
 export function LessonPlayer(props: Props) {
   const { projectId, output, live, liveStatus, handle, caption, onChange, onError } = props
+  const stage = STAGES[props.format]
+  const ratio = stage.width / stage.height
   const frameRef = useRef<HTMLDivElement>(null)
   const hostRef = useRef<HTMLDivElement>(null)
   const timeRef = useRef<HTMLSpanElement>(null)
@@ -280,13 +290,21 @@ export function LessonPlayer(props: Props) {
 
   return (
     <section className={cx('grid min-h-0 flex-1 place-items-center [container-type:size]', props.className)}>
-      {/* Stage and controls move as one unit: the largest 16:9 stage that leaves room for the controls. */}
-      <div className="flex flex-col gap-3" style={{ width: `min(100cqw, (100cqh - ${CONTROLS_HEIGHT}px) * 16 / 9)` }}>
+      {/* Stage and controls move as one unit: the largest stage in the lesson's shape that leaves room for the
+          controls. A tall stage is narrower than the controls need, so the unit keeps a minimum width. */}
+      <div
+        className="flex flex-col gap-3"
+        style={{ width: `min(100cqw, max(26rem, (100cqh - ${CONTROLS_HEIGHT}px) * ${ratio}))`, ['--ratio' as string]: ratio }}
+      >
         <div
           ref={frameRef}
           className="grid place-items-center [&:fullscreen]:bg-board [&:fullscreen]:h-full [&:fullscreen]:[container-type:size]"
         >
-          <div className="relative aspect-video w-full overflow-hidden rounded-2xl bg-board shadow-xl ring-1 shadow-ink/15 ring-ink/10 [:fullscreen_&]:w-[min(100cqw,100cqh*16/9)] [:fullscreen_&]:rounded-none">
+          <div
+            // As wide as the unit, unless that would make a tall stage too high for the window (64px: CONTROLS_HEIGHT).
+            className="relative mx-auto w-[min(100%,calc((100cqh_-_64px)*var(--ratio)))] overflow-hidden [container-type:inline-size] rounded-2xl bg-board shadow-xl ring-1 shadow-ink/15 ring-ink/10 [:fullscreen_&]:w-[min(100cqw,100cqh*var(--ratio))] [:fullscreen_&]:rounded-none"
+            style={{ aspectRatio: `${stage.width} / ${stage.height}` }}
+          >
             <div
               ref={hostRef}
               className="absolute inset-0 [&_svg]:size-full"
@@ -333,6 +351,7 @@ export function LessonPlayer(props: Props) {
               </div>
             )}
 
+            {/* Sized to the stage (its own container), so a narrow vertical stage gets smaller captions. */}
             {captions && caption && ready && !editing && (
               <p className="absolute bottom-[5%] left-1/2 w-max max-w-[82%] -translate-x-1/2 rounded-lg bg-black/65 px-4 py-2 text-center text-chalk text-[clamp(13px,1.6cqw,20px)] leading-snug font-medium text-balance">
                 {caption}
@@ -478,6 +497,19 @@ export function LessonPlayer(props: Props) {
                 Remove soundtrack
               </MenuItem>
             )}
+            <MenuSeparator />
+            <MenuLabel>Shape</MenuLabel>
+            {FORMATS.map((format) => (
+              <MenuItem
+                key={format}
+                icon={FORMAT_ICONS[format]}
+                checked={format === props.format}
+                disabled={props.recording}
+                onSelect={() => props.onFormatChange(format)}
+              >
+                {FORMAT_LABELS[format]}
+              </MenuItem>
+            ))}
             <MenuSeparator />
             <MenuLabel>Edit</MenuLabel>
             <MenuItem icon={Pencil} disabled={!ready} onSelect={() => props.onEdit('chapter')}>

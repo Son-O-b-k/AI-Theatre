@@ -111,6 +111,22 @@ describe('lesson jobs', () => {
     }
   })
 
+  test('a vertical lesson is written for a tall stage, and its chapters say so', async () => {
+    const seen: string[] = []
+    const jobs = jobsWith({
+      ...scriptedProvider(),
+      async *stream(r, signal) {
+        seen.push(r.messages.at(-1)!.content)
+        yield* scriptedProvider().stream(r, signal)
+      },
+    })
+    const events = await finish(jobs, await jobs.start(account, request('teach', { format: 'portrait' })))
+    const outputs = events.flatMap((e) => (e.type === 'output' ? [e.delivery.output as Output] : []))
+    assert.deepEqual(outputs.map((o) => o.scene.format), ['portrait', 'portrait'])
+    assert.ok(events.filter((e) => e.type === 'live').every((e) => (e as { scene: { format?: string } }).scene.format === 'portrait'))
+    assert.deepEqual(seen.map((content) => /vertical video \(9:16\)/.test(content)), [false, true, true], 'chapters are told, the outline need not be')
+  })
+
   test('a revision replaces the chapter it was asked to change', async () => {
     const jobs = jobsWith(scriptedProvider())
     const first = (await finish(jobs, await jobs.start(account, request('scene')))).find((e) => e.type === 'output')

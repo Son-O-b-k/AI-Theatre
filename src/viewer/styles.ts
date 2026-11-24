@@ -3,11 +3,11 @@
 export const VIEWER_CSS = `
 .atv { font-family: 'Instrument Sans Variable', 'Inter Variable', system-ui, sans-serif; color: #f3f0e8; background: #1d2422; border-radius: 12px; overflow: hidden; }
 .atv:fullscreen { display: flex; flex-direction: column; justify-content: center; border-radius: 0; }
-.atv-frame { position: relative; aspect-ratio: 16 / 9; width: 100%; }
-.atv:fullscreen .atv-frame { max-height: calc(100vh - 52px); width: auto; margin: 0 auto; }
+.atv-frame { position: relative; aspect-ratio: 16 / 9; width: min(100%, 85vh * var(--atv-ratio, 1.78)); margin: 0 auto; container-type: inline-size; }
+.atv:fullscreen .atv-frame { width: min(100%, (100vh - 52px) * var(--atv-ratio, 1.78)); margin: 0 auto; }
 .atv-stage, .atv-stage svg { position: absolute; inset: 0; width: 100%; height: 100%; cursor: pointer; }
 .atv-caption { position: absolute; left: 50%; bottom: 5%; transform: translateX(-50%); width: max-content; max-width: 84%; margin: 0;
-  padding: 6px 14px; border-radius: 8px; background: rgba(0, 0, 0, 0.66); font-size: clamp(12px, 1.7vw, 20px); line-height: 1.35;
+  padding: 6px 14px; border-radius: 8px; background: rgba(0, 0, 0, 0.66); font-size: clamp(12px, 1.7cqw, 20px); line-height: 1.35;
   text-align: center; font-weight: 500; text-wrap: balance; pointer-events: none; }
 .atv-big-play { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 64px; height: 64px; border-radius: 50%;
   border: 1px solid rgba(255, 255, 255, 0.25); background: rgba(0, 0, 0, 0.45); color: #f3f0e8; cursor: pointer; display: grid; place-items: center; }

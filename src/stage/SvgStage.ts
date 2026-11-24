@@ -7,7 +7,7 @@
 import type { Resolved } from '../scene/compile'
 import { bounds, LINK_LABEL_SIZE, linkGeometry, type Placed, type Point, type Rect } from '../scene/geometry'
 import { THEME } from '../scene/palette'
-import { ANIMATED_PROPS, STAGE, type ElementOf, type SceneElement, type Visual } from '../scene/schema'
+import { ANIMATED_PROPS, STAGES, type ElementOf, type SceneElement, type Visual } from '../scene/schema'
 import { GROUP } from '../scene/widgets'
 import { buildShape, labelText, type Ink } from './elements'
 import { pathLength, reveal, roundedRect, seedOf, sketchLine } from './sketch'
@@ -54,6 +54,9 @@ interface StageNode {
 export class SvgStage {
   readonly svg: SVGSVGElement
   private readonly backdrop: SVGRectElement
+  /** The full-stage layers, resized when a scene in another format is shown. */
+  private readonly fills: SVGRectElement[]
+  private size = ''
   private readonly groupLayer: SVGGElement
   private readonly linkLayer: SVGGElement
   private readonly layer: SVGGElement
@@ -70,26 +73,41 @@ export class SvgStage {
     this.svg = create('svg', {
       // Explicit, so the serialised SVG (frame export, video) is a valid standalone file.
       xmlns: SVG_NS,
-      viewBox: `0 0 ${STAGE.width} ${STAGE.height}`,
+      viewBox: `0 0 ${STAGES.landscape.width} ${STAGES.landscape.height}`,
       preserveAspectRatio: 'xMidYMid meet',
       'font-family': 'Inter, ui-sans-serif, system-ui, sans-serif',
     })
     this.svg.append(tree(DEFS))
-    this.backdrop = create('rect', { width: STAGE.width, height: STAGE.height, fill: THEME.background })
-    const vignette = create('rect', { width: STAGE.width, height: STAGE.height, fill: 'url(#vignette)' })
-    const grid = create('rect', { width: STAGE.width, height: STAGE.height, fill: 'url(#grid)' })
+    this.backdrop = create('rect', { fill: THEME.background })
+    const vignette = create('rect', { fill: 'url(#vignette)' })
+    const grid = create('rect', { fill: 'url(#grid)' })
+    this.fills = [this.backdrop, vignette, grid]
     this.groupLayer = create('g')
     this.linkLayer = create('g')
     this.layer = create('g')
     // A brand logo, top right, above the drawing (src/scene/brand.ts).
-    this.logo = create('image', { x: STAGE.width - 236, y: 24, width: 200, height: 48, preserveAspectRatio: 'xMaxYMin meet', visibility: 'hidden' })
+    this.logo = create('image', { y: 24, width: 200, height: 48, preserveAspectRatio: 'xMaxYMin meet', visibility: 'hidden' })
     this.selection = create('rect', { fill: 'none', rx: 10, 'stroke-width': 2.5, 'stroke-dasharray': '7 6', visibility: 'hidden', 'pointer-events': 'none', style: 'stroke: var(--color-accent, #c8402a)' })
     this.svg.append(this.backdrop, vignette, grid, this.groupLayer, this.linkLayer, this.layer, this.logo, this.selection)
     container.append(this.svg)
+    this.resize(STAGES.landscape)
+  }
+
+  private resize({ width, height }: { width: number; height: number }): void {
+    const size = `${width}x${height}`
+    if (size === this.size) return
+    this.size = size
+    this.svg.setAttribute('viewBox', `0 0 ${width} ${height}`)
+    for (const fill of this.fills) {
+      fill.setAttribute('width', String(width))
+      fill.setAttribute('height', String(height))
+    }
+    this.logo.setAttribute('x', String(width - 236))
   }
 
   /** Makes the DOM match the scene, reusing nodes whose structure is unchanged. */
   render(scene: Resolved): void {
+    this.resize(scene.stage)
     this.backdrop.setAttribute('fill', scene.background)
     this.svg.style.setProperty('--stage-bg', scene.background)
     const ink = scene.ink ?? DEFAULT_INK

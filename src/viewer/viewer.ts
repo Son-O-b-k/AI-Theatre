@@ -4,7 +4,7 @@
 import type { ViewerLesson } from '../../shared/protocol'
 import { brandResolved, brandTheatreState } from '../scene/brand'
 import { compile } from '../scene/compile'
-import type { Scene } from '../scene/schema'
+import { stageOf, type Scene } from '../scene/schema'
 import type { TheatreState } from '../scene/theatre'
 import { theatreProjectId } from '../project'
 import { mountScene, type Mounted } from '../stage/mount'
@@ -61,6 +61,10 @@ export function mountViewer(container: HTMLElement, lesson: ViewerLesson, option
 
   const root = element('div', 'atv')
   const frame = element('div', 'atv-frame')
+  // A lesson has one shape; its first chapter says which.
+  const { width, height } = stageOf((lesson.chapters[0]?.scene as Scene | undefined)?.format)
+  frame.style.setProperty('--atv-ratio', String(width / height))
+  frame.style.aspectRatio = `${width} / ${height}`
   const host = element('div', 'atv-stage')
   const caption = element('p', 'atv-caption')
   const bigPlay = element('button', 'atv-big-play', svgIcon('play'))

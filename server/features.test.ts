@@ -11,7 +11,7 @@ import { after, afterEach, before, beforeEach, describe, test } from 'node:test'
 import { exportJWK, generateKeyPair, SignJWT } from 'jose'
 import { LESSON_TOKENS } from '../shared/plans'
 import { inLanguage } from '../src/ai/prompts'
-import { newOutput, type Output, type Project } from '../src/project'
+import { newOutput, reformatted, type Output, type Project } from '../src/project'
 import { brandResolved, brandTheatreState } from '../src/scene/brand'
 import { hexToRgba, rgbaToCss } from '../src/scene/color'
 import { compile } from '../src/scene/compile'
@@ -353,6 +353,15 @@ describe('exports', () => {
     const { stderr } = spawnSync((await import('@ffmpeg-installer/ffmpeg')).default.path, ['-hide_banner', '-i', file])
     assert.match(stderr.toString(), /Video: h264.*1280x720/)
     assert.match(stderr.toString(), /Audio: aac/)
+  })
+
+  test('a vertical lesson becomes a 720x1280 video', { timeout: 120_000 }, async () => {
+    process.env.DATA_DIR = await mkdtemp(join(tmpdir(), 'video-'))
+    const output = reformatted({ id: 'p', name: 'P', createdAt: '', updatedAt: '', outputs: [chapter()] }, 'portrait').outputs[0]
+    const file = join(process.env.DATA_DIR, 'vertical.mp4')
+    await exportVideo({ chapters: [{ scene: output.scene, theatreState: output.theatreState }], brand: null, captions: true, output: file, onProgress: () => {} })
+    const { stderr } = spawnSync((await import('@ffmpeg-installer/ffmpeg')).default.path, ['-hide_banner', '-i', file])
+    assert.match(stderr.toString(), /Video: h264.*720x1280/)
   })
 
   test('a SCORM package has its manifest, player, lesson and fonts', { timeout: 180_000 }, async () => {

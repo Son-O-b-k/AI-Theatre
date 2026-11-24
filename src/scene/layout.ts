@@ -9,7 +9,7 @@
 // one cell like any shape.
 
 import { bounds, LINK_LABEL_SIZE, linkGeometry, type Placed, type Rect } from './geometry'
-import { SAFE, STAGE, type Board, type Element, type ElementOf, type Layout } from './schema'
+import { STAGES, type Board, type Element, type ElementOf, type Layout, type StageFrame } from './schema'
 import { textWidth } from './text'
 import { GROUP } from './widgets'
 
@@ -39,9 +39,10 @@ interface Cell {
   row: number
 }
 
-export function layoutBoard(board: Board, elements: Element[]): Map<string, Placement> {
+export function layoutBoard(board: Board, elements: Element[], stage: StageFrame = STAGES.landscape): Map<string, Placement> {
   const placements = new Map<string, Placement>()
-  const region: Rect = { x0: SAFE.x0, x1: SAFE.x1, y0: board.title ? SAFE.y0 : 60, y1: SAFE.y1 }
+  const { safe } = stage
+  const region: Rect = { x0: safe.x0, x1: safe.x1, y0: board.title ? safe.y0 : 60, y1: safe.y1 }
   const shapes = elements.filter((el) => el.kind !== 'link' && el.kind !== 'dot' && el.kind !== 'text' && el.kind !== 'group')
   const notes = elements.filter((el): el is ElementOf<'text'> => el.kind === 'text')
   const links = elements.filter((el): el is ElementOf<'link'> => el.kind === 'link')
@@ -79,7 +80,7 @@ export function layoutBoard(board: Board, elements: Element[]): Map<string, Plac
 
   // Tokens are moved by their travel animations; until then they wait at the centre.
   for (const el of elements) {
-    if (el.kind === 'dot') placements.set(el.id, { x: STAGE.width / 2, y: (region.y0 + region.y1) / 2, scale: 1, curve: 0 })
+    if (el.kind === 'dot') placements.set(el.id, { x: (region.x0 + region.x1) / 2, y: (region.y0 + region.y1) / 2, scale: 1, curve: 0 })
   }
   routeLinks(links, shapes, placements)
   return placements
@@ -124,7 +125,7 @@ function placeNotes(notes: ElementOf<'text'>[], region: Rect, belowDiagram: bool
   let y = belowDiagram ? region.y1 - height : (region.y0 + region.y1 - height) / 2
   notes.forEach((note, i) => {
     const size = sizes[i]
-    placements.set(note.id, { x: STAGE.width / 2 - size.cx, y: y + size.height / 2 - size.cy, scale: 1, curve: 0 })
+    placements.set(note.id, { x: (region.x0 + region.x1) / 2 - size.cx, y: y + size.height / 2 - size.cy, scale: 1, curve: 0 })
     y += size.height + NOTE_GAP
   })
   return belowDiagram ? { ...region, y1: region.y1 - height - GAP.y } : region
@@ -154,13 +155,16 @@ function placeShapes(
   }
 
   const cells = arrange(layout, shapes, links, cellW, cellH, width, height, gap)
-  const cols = Math.max(...cells.map((cell) => cell.col)) + 1
-  const rows = Math.max(...cells.map((cell) => cell.row)) - Math.min(...cells.map((cell) => cell.row)) + 1
+  const span = (of: (cell: Cell) => number) => {
+    const values = cells.map(of)
+    const [lo, hi] = [Math.min(...values), Math.max(...values)]
+    return { count: hi - lo + 1, mid: (hi + lo) / 2 }
+  }
+  const { count: cols, mid: midCol } = span((cell) => cell.col)
+  const { count: rows, mid: midRow } = span((cell) => cell.row)
   const spanW = cols * cellW + (cols - 1) * gap.x
   const spanH = rows * cellH + (rows - 1) * gap.y
   const scale = Math.min(MAX_SCALE, width / spanW, height / spanH)
-  const midCol = (cols - 1) / 2
-  const midRow = (Math.max(...cells.map((cell) => cell.row)) + Math.min(...cells.map((cell) => cell.row))) / 2
 
   shapes.forEach((shape, i) => {
     const cell = cells[i]
@@ -182,7 +186,11 @@ function arrange(
   gap: typeof GAP,
 ): Cell[] {
   const n = shapes.length
-  if (layout === 'flow') return flowCells(shapes, links)
+  if (layout === 'flow') {
+    const cells = flowCells(shapes, links)
+    // On a tall stage a flow runs downwards: its steps become rows, side branches columns.
+    return height > width ? cells.map(({ col, row }) => ({ col: row, row: col })) : cells
+  }
 
   const scaleFor = (cols: number) => {
     const rows = Math.ceil(n / cols)

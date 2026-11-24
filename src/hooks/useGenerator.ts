@@ -8,7 +8,7 @@ import type { Delivery, JobEvent, JobMode, ModelTarget } from '../../shared/prot
 import { api } from '../api'
 import { record, unrecorded, withNarration } from '../narration'
 import { retimed, titleFrom, type Output, type Project } from '../project'
-import type { Scene } from '../scene/schema'
+import type { Format, Scene } from '../scene/schema'
 
 export type Mode = JobMode
 
@@ -100,16 +100,16 @@ export function useGenerator({ target, voice, project, output, create, update, s
   )
 
   const run = useCallback(
-    async (mode: Mode, prompt: string, language: string, source?: string) => {
+    async (mode: Mode, prompt: string, language: string, format: Format, source?: string) => {
       setWarnings([])
       starting.current = true
       try {
         let forProject = project?.id
         if (mode === 'teach' || !project) {
           forProject = (await create(titleFrom(prompt))).id
-          update((created) => ({ ...created, language }))
+          update((created) => ({ ...created, language, format }))
         }
-        const request = { mode, prompt, projectId: forProject!, ...target, voice, language, source: mode === 'refine' ? undefined : source, output: mode === 'refine' ? output : undefined }
+        const request = { mode, prompt, projectId: forProject!, ...target, voice, language, format, source: mode === 'refine' ? undefined : source, output: mode === 'refine' ? output : undefined }
         const { id } = await api.startJob(request)
         const job = follow(id, forProject!)
         starting.current = false

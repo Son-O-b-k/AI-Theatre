@@ -125,6 +125,8 @@ export interface JobRequest extends ModelTarget {
   output?: unknown
   /** The lesson's language (shared/languages.ts); English when unset. */
   language?: string
+  /** The stage's shape (src/scene/schema.ts FORMATS); landscape when unset. */
+  format?: 'landscape' | 'portrait' | 'square'
   /** Material to teach from (a document's text, at most MAX_SOURCE_CHARS); new lessons and chapters only. */
   source?: string
 }

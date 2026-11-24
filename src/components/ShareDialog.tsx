@@ -2,18 +2,28 @@ import { ExternalLink, Loader2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { Share } from '../../shared/protocol'
 import { api } from '../api'
+import type { Format } from '../scene/schema'
 import { Button } from './ui/Button'
 import { CopyField, Dialog } from './ui/Dialog'
 
 interface Props {
   projectId: string
+  /** The lesson's shape, so the embed code makes a frame that fits it. */
+  format: Format
   /** Sharing is part of Creator and up; otherwise the dialog offers the plans. */
   allowed: boolean
   onSeePlans(): void
   onClose(): void
 }
 
-export function ShareDialog({ projectId, allowed, onSeePlans, onClose }: Props) {
+/** Embed frames: the stage at a comfortable size, plus the viewer's control bar. */
+const EMBED_SIZE: Record<Format, { width: number; height: number }> = {
+  landscape: { width: 800, height: 510 },
+  portrait: { width: 405, height: 770 },
+  square: { width: 600, height: 650 },
+}
+
+export function ShareDialog({ projectId, format, allowed, onSeePlans, onClose }: Props) {
   const [share, setShare] = useState<Share | null | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -36,7 +46,7 @@ export function ShareDialog({ projectId, allowed, onSeePlans, onClose }: Props) 
 
   const link = share ? `${location.origin}/s/${share.id}` : ''
   const embed = share
-    ? `<iframe src="${location.origin}/embed/${share.id}" width="800" height="510" style="border:0;max-width:100%" allow="fullscreen" title="Lesson"></iframe>`
+    ? `<iframe src="${location.origin}/embed/${share.id}" width="${EMBED_SIZE[format].width}" height="${EMBED_SIZE[format].height}" style="border:0;max-width:100%" allow="fullscreen" title="Lesson"></iframe>`
     : ''
 
   return (

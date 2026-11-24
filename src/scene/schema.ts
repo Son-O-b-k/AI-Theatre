@@ -8,10 +8,33 @@ import { ICONS, ILLUSTRATIONS } from './library'
 import { toColor } from './palette'
 
 export const SCENE_VERSION = 3
-export const STAGE = { width: 1280, height: 720 } as const
-/** Where diagrams go: below the board title, above the strip where captions are shown. */
-export const SAFE = { x0: 60, x1: 1220, y0: 104, y1: 590 } as const
-export const TITLE_Y = 54
+
+/** The shape of a lesson's video: landscape (16:9), vertical (9:16, for Shorts, Reels, TikTok) or square. */
+export const FORMATS = ['landscape', 'portrait', 'square'] as const
+export type Format = (typeof FORMATS)[number]
+export const DEFAULT_FORMAT: Format = 'landscape'
+
+export interface StageFrame {
+  width: number
+  height: number
+  /** Where diagrams go: below the board title, above the strip where captions are shown. */
+  safe: { x0: number; x1: number; y0: number; y1: number }
+  /** The centre of a board's title, and how wide it may be before it wraps. */
+  titleY: number
+  titleWidth: number
+}
+
+/** Shapes and text keep their size in every format; the stage around them changes. */
+export const STAGES: Record<Format, StageFrame> = {
+  landscape: { width: 1280, height: 720, safe: { x0: 60, x1: 1220, y0: 104, y1: 590 }, titleY: 54, titleWidth: 1100 },
+  // Room for a two-line title at the top and captions at the bottom, clear of app overlays.
+  portrait: { width: 720, height: 1280, safe: { x0: 44, x1: 676, y0: 210, y1: 1080 }, titleY: 120, titleWidth: 620 },
+  square: { width: 1080, height: 1080, safe: { x0: 56, x1: 1024, y0: 140, y1: 930 }, titleY: 64, titleWidth: 940 },
+}
+
+export const stageOf = (format: Format | undefined): StageFrame => STAGES[format ?? DEFAULT_FORMAT] ?? STAGES[DEFAULT_FORMAT]
+
+export const FORMAT_LABELS: Record<Format, string> = { landscape: 'Landscape 16:9', portrait: 'Vertical 9:16', square: 'Square 1:1' }
 
 export const LAYOUTS = ['row', 'column', 'grid', 'flow', 'cycle'] as const
 export type Layout = (typeof LAYOUTS)[number]
@@ -182,6 +205,8 @@ export interface Scene {
   beats: Beat[]
   /** The voice the beats' audio was recorded with. */
   voice?: string
+  /** The stage's shape; landscape when unset (every lesson made before formats existed). */
+  format?: Format
   /** Keyframes edited in Theatre Studio; when present they replace the ones derived from the beats. */
   keys?: Key[]
   /** Derived from the beats by finalizeScene, kept for the player and transcript. */

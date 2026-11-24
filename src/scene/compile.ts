@@ -7,9 +7,11 @@
 import { linkGeometry, type Placed } from './geometry'
 import { layoutBoard, type Placement } from './layout'
 import { THEME, toHex } from './palette'
-import { STAGE, TITLE_Y, type Action, type AnimatedProp, type Beat, type Cue, type ElementKind, type Key, type Scene, type SceneElement, type Visual } from './schema'
+import { stageOf, type Action, type AnimatedProp, type Beat, type Cue, type ElementKind, type Key, type Scene, type SceneElement, type StageFrame, type Visual } from './schema'
 
 export interface Resolved {
+  /** The stage's size and safe area, from the scene's format. */
+  stage: StageFrame
   duration: number
   background: string
   /** Text and label colours, when they differ from the default dark-stage ones (brand.ts). */
@@ -39,7 +41,8 @@ export const speechSeconds = (text: string) => text.split(/\s+/).filter(Boolean)
 const easeInOut = (u: number) => (u < 0.5 ? 2 * u * u : 1 - (-2 * u + 2) ** 2 / 2)
 
 export function compile(scene: Scene): Resolved {
-  const { elements, positions } = place(scene)
+  const stage = stageOf(scene.format)
+  const { elements, positions } = place(scene, stage)
   const byId = new Map(elements.map((el) => [el.id, el]))
   const state = new Map(elements.map((el) => [el.id, { ...visualOf(el) }]))
   const keys: Key[] = []
@@ -197,6 +200,7 @@ export function compile(scene: Scene): Resolved {
   }
 
   return {
+    stage,
     duration: Math.ceil(t + 0.5),
     background: THEME.background,
     elements,
@@ -209,12 +213,15 @@ export function compile(scene: Scene): Resolved {
  * Lays out every board and adds its titles. Each element starts hidden at its place on the first
  * board it appears on; `positions` holds its place on every board, for the moves between boards.
  */
-function place(scene: Scene): { elements: SceneElement[]; positions: Map<string, Map<number, Placement>> } {
+function place(scene: Scene, stage: StageFrame): { elements: SceneElement[]; positions: Map<string, Map<number, Placement>> } {
   const positions = new Map<string, Map<number, Placement>>()
   const titles: SceneElement[] = []
+  // Notes wrap within the safe area; on a narrow stage that is less than the width the AI asked for.
+  const room = stage.safe.x1 - stage.safe.x0
+  const fitted = scene.elements.map((el) => (el.kind === 'text' && el.width > room ? { ...el, width: room } : el))
   scene.boards.forEach((board, index) => {
-    const members = scene.elements.filter((el) => el.boards.includes(index))
-    for (const [id, placement] of layoutBoard(board, members)) {
+    const members = fitted.filter((el) => el.boards.includes(index))
+    for (const [id, placement] of layoutBoard(board, members, stage)) {
       if (!positions.has(id)) positions.set(id, new Map())
       positions.get(id)!.set(index, placement)
     }
@@ -225,18 +232,18 @@ function place(scene: Scene): { elements: SceneElement[]; positions: Map<string,
         text: board.title,
         size: 34,
         weight: 700,
-        width: 1100,
+        width: stage.titleWidth,
         font: 'sans',
         boards: [index],
         color: THEME.text,
-        ...hidden({ x: STAGE.width / 2, y: TITLE_Y, scale: 1, curve: 0 }),
+        ...hidden({ x: stage.width / 2, y: stage.titleY, scale: 1, curve: 0 }),
       })
     }
   })
 
-  const elements = scene.elements.map((el): SceneElement => {
+  const elements = fitted.map((el): SceneElement => {
     const first = positions.get(el.id)?.get(Math.min(...el.boards))
-    return { ...el, ...hidden(first ?? { x: STAGE.width / 2, y: STAGE.height / 2, scale: 1, curve: 0 }) }
+    return { ...el, ...hidden(first ?? { x: stage.width / 2, y: stage.height / 2, scale: 1, curve: 0 }) }
   })
   return { elements: [...titles, ...elements], positions }
 }
