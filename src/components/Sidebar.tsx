@@ -1,12 +1,12 @@
-import { BookOpen, Download, LogOut, MoreHorizontal, PanelLeftClose, Plus, Trash2, Upload, Users } from 'lucide-react'
-import { useRef } from 'react'
+import { BookOpen, ChevronsUpDown, Cpu, Download, KeyRound, LogOut, MoreHorizontal, PanelLeftClose, Plus, Sparkles, Trash2, Upload, Users } from 'lucide-react'
+import { useRef, type ReactNode } from 'react'
 import { LESSON_TOKENS, PLANS } from '../../shared/plans'
 import type { AccountInfo, ModelTarget, ProjectSummary, ProviderInfo } from '../../shared/protocol'
 import { UsageBar } from './BillingDialog'
 import { Logo } from './Logo'
 import { Button } from './ui/Button'
 import { cx } from './ui/cx'
-import { Menu, MenuItem } from './ui/Menu'
+import { Menu, MenuItem, MenuLabel, MenuSeparator } from './ui/Menu'
 
 interface Props {
   account: AccountInfo
@@ -131,8 +131,6 @@ export function Sidebar({ account, onOpenBilling, onOpenTeam, onAddKey, onSwitch
   )
 }
 
-const ADD_KEY = '__add-key__'
-
 /** Who pays for the next lesson with this model, in a line. */
 function paidBy(provider: ProviderInfo | undefined, account: AccountInfo): string {
   if (!provider) return ''
@@ -147,7 +145,6 @@ function ModelPicker({ account, providers, target, onTarget, onAddKey }: Pick<Pr
   const included = providers.filter((p) => p.source !== 'own')
   const own = providers.filter((p) => p.source === 'own')
   const canAddKey = account.billing.features.includes('ownProviders') && account.workspace.role === 'owner'
-  const control = 'h-8 w-full cursor-pointer rounded-lg border border-line bg-panel px-2 text-[13px] outline-none focus:border-accent/60'
 
   return (
     <div className="m-3 rounded-xl border border-line bg-raised p-3">
@@ -158,43 +155,43 @@ function ModelPicker({ account, providers, target, onTarget, onAddKey }: Pick<Pr
         />
         AI model
       </div>
-      <select
-        value={target.provider}
-        aria-label="AI provider"
-        onChange={(e) => {
-          if (e.target.value === ADD_KEY) return onAddKey()
-          const next = providers.find((p) => p.id === e.target.value)
-          onTarget({ provider: e.target.value, model: next?.source === 'default' ? '' : (next?.models[0] ?? '') })
-        }}
-        className={control}
-      >
-        <optgroup label="Included in your plan">
-          {included.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.label}
-            </option>
-          ))}
-        </optgroup>
+      {/* Menus rather than <select>: at the foot of the screen a native list opens over its own box and
+          hides the choices below the current one (macOS), so these open upwards. */}
+      <Picker label="AI provider" value={provider?.label ?? 'Choose a model'}>
+        <MenuLabel>Included in your plan</MenuLabel>
+        {included.map((p) => (
+          <MenuItem key={p.id} icon={Sparkles} checked={p.id === target.provider} onSelect={() => onTarget({ provider: p.id, model: '' })}>
+            {p.label}
+          </MenuItem>
+        ))}
         {(own.length > 0 || canAddKey) && (
-          <optgroup label="Your keys">
+          <>
+            <MenuSeparator />
+            <MenuLabel>Your keys</MenuLabel>
             {own.map((p) => (
-              <option key={p.id} value={p.id}>
+              <MenuItem key={p.id} icon={KeyRound} checked={p.id === target.provider} onSelect={() => onTarget({ provider: p.id, model: p.models[0] ?? '' })}>
                 {p.label}
-              </option>
+              </MenuItem>
             ))}
-            {canAddKey && <option value={ADD_KEY}>+ Add your own key…</option>}
-          </optgroup>
+            {canAddKey && (
+              <MenuItem icon={Plus} onSelect={onAddKey}>
+                Add your own key…
+              </MenuItem>
+            )}
+          </>
         )}
-      </select>
+      </Picker>
       {provider && provider.source !== 'default' && (
         provider.models.length > 0 ? (
-          <select value={target.model} aria-label="Model" onChange={(e) => onTarget({ ...target, model: e.target.value })} className={cx(control, 'mt-2')}>
-            {provider.models.map((model) => (
-              <option key={model} value={model}>
-                {model}
-              </option>
-            ))}
-          </select>
+          <div className="mt-2">
+            <Picker label="Model" value={target.model || 'Choose a model'}>
+              {provider.models.map((model) => (
+                <MenuItem key={model} icon={Cpu} checked={model === target.model} onSelect={() => onTarget({ ...target, model })}>
+                  {model}
+                </MenuItem>
+              ))}
+            </Picker>
+          </div>
         ) : (
           // The provider could not list its models: let the person type one.
           <input
@@ -202,7 +199,7 @@ function ModelPicker({ account, providers, target, onTarget, onAddKey }: Pick<Pr
             placeholder="Model name"
             aria-label="Model"
             onChange={(e) => onTarget({ ...target, model: e.target.value })}
-            className={cx(control, 'mt-2 cursor-text')}
+            className="mt-2 h-8 w-full rounded-lg border border-line bg-panel px-2 text-[13px] outline-none focus:border-accent/60"
           />
         )
       )}
@@ -214,6 +211,34 @@ function ModelPicker({ account, providers, target, onTarget, onAddKey }: Pick<Pr
         <p className="mt-2 text-xs text-faint">{paidBy(provider, account)}</p>
       )}
     </div>
+  )
+}
+
+/** A choice that opens upwards, as a menu, from a box that looks like a select. */
+function Picker({ label, value, children }: { label: string; value: string; children: ReactNode }) {
+  return (
+    <Menu
+      side="top"
+      align="start"
+      trigger={({ open, toggle }) => (
+        <button
+          type="button"
+          onClick={toggle}
+          aria-label={label}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          className={cx(
+            'flex h-8 w-full cursor-pointer items-center gap-2 rounded-lg border bg-panel px-2 text-left text-[13px] outline-none focus-visible:border-accent/60',
+            open ? 'border-accent/60' : 'border-line',
+          )}
+        >
+          <span className="min-w-0 flex-1 truncate">{value}</span>
+          <ChevronsUpDown className="size-3.5 shrink-0 text-faint" />
+        </button>
+      )}
+    >
+      {children}
+    </Menu>
   )
 }
 
