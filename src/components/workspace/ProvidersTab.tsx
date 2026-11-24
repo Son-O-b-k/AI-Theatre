@@ -1,4 +1,4 @@
-import { Check, ExternalLink, Loader2, Plug, Search, Trash2 } from 'lucide-react'
+import { Check, ExternalLink, Loader2, Pencil, Plug, Search, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { PLANS, type PlanId } from '../../../shared/plans'
 import type { NewWorkspaceProvider, WorkspaceProvider } from '../../../shared/protocol'
@@ -36,6 +36,7 @@ export function ProvidersTab({ isOwner, plan, onChanged }: { isOwner: boolean; p
   const [list, setList] = useState<WorkspaceProvider[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [editing, setEditing] = useState<string | null>(null)
   const own = PLANS[plan].ownKeyLessons
 
   const reload = () => api.workspaceProviders().then(setList, (e) => setError(e.message))
@@ -66,19 +67,37 @@ export function ProvidersTab({ isOwner, plan, onChanged }: { isOwner: boolean; p
       {list && list.length > 0 && (
         <ul className="mt-4 divide-y divide-line rounded-xl border border-line bg-raised">
           {list.map((p) => (
-            <li key={p.id} className="flex items-center gap-3 px-3 py-2.5 text-sm">
-              <Plug className="size-4 shrink-0 text-faint" />
-              <span className="min-w-0 flex-1">
-                <span className="block font-medium">{p.label}</span>
-                <span className="block truncate text-xs text-faint">
-                  {p.models.length > 0 ? p.models.join(', ') : 'Every model on this account'}
-                  {p.hasKey ? ' · key stored encrypted' : ''}
+            <li key={p.id} className="px-3 py-2.5 text-sm">
+              <div className="flex items-center gap-3">
+                <Plug className="size-4 shrink-0 text-faint" />
+                <span className="min-w-0 flex-1">
+                  <span className="block font-medium">{p.label}</span>
+                  <span className="block truncate text-xs text-faint">
+                    {p.models.length > 0 ? p.models.join(', ') : 'Every model on this account'}
+                    {p.hasKey ? ' · key stored encrypted' : ''}
+                  </span>
                 </span>
-              </span>
-              {isOwner && (
-                <Button variant="ghost" size="icon-sm" title="Remove" disabled={busy} onClick={() => remove(p.id)}>
-                  <Trash2 className="size-3.5" />
-                </Button>
+                {isOwner && (
+                  <>
+                    <Button variant="ghost" size="icon-sm" title="Change name or models" disabled={busy} onClick={() => setEditing(editing === p.id ? null : p.id)}>
+                      <Pencil className="size-3.5" />
+                    </Button>
+                    <Button variant="ghost" size="icon-sm" title="Remove" disabled={busy} onClick={() => remove(p.id)}>
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  </>
+                )}
+              </div>
+              {editing === p.id && (
+                <EditProvider
+                  provider={p}
+                  onCancel={() => setEditing(null)}
+                  onSaved={async () => {
+                    setEditing(null)
+                    await reload()
+                    onChanged()
+                  }}
+                />
               )}
             </li>
           ))}
@@ -108,7 +127,6 @@ function AddProvider({ onAdded }: { onAdded(): Promise<void> }) {
   const [models, setModels] = useState<string[] | null>(null)
   const [chosen, setChosen] = useState<Set<string>>(new Set())
   const [allModels, setAllModels] = useState(true)
-  const [filter, setFilter] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -147,7 +165,6 @@ function AddProvider({ onAdded }: { onAdded(): Promise<void> }) {
       await onAdded()
     })
 
-  const shown = useMemo(() => (models ?? []).filter((m) => m.toLowerCase().includes(filter.toLowerCase())), [models, filter])
   const ready = preset && (!preset.needsKey || apiKey.trim()) && (!preset.askUrl || baseUrl.trim())
 
   return (
@@ -235,42 +252,7 @@ function AddProvider({ onAdded }: { onAdded(): Promise<void> }) {
                 <span className="text-dim">Name in the model list</span>
                 <input className={field} value={label} placeholder={preset.label} onChange={(e) => setLabel(e.target.value)} />
               </label>
-              <fieldset className="grid gap-2 text-sm">
-                <label className="flex cursor-pointer items-center gap-2">
-                  <input type="radio" checked={allModels} onChange={() => setAllModels(true)} /> Offer every model (new ones appear by themselves)
-                </label>
-                <label className="flex cursor-pointer items-center gap-2">
-                  <input type="radio" checked={!allModels} onChange={() => setAllModels(false)} /> Choose which models to offer
-                </label>
-              </fieldset>
-              {!allModels && (
-                <div className="rounded-lg border border-line">
-                  <div className="flex items-center gap-2 border-b border-line px-2">
-                    <Search className="size-3.5 text-faint" />
-                    <input className="h-8 w-full bg-transparent text-sm outline-none" placeholder="Filter models" value={filter} onChange={(e) => setFilter(e.target.value)} />
-                    <span className="shrink-0 text-xs text-faint">{chosen.size} chosen</span>
-                  </div>
-                  <ul className="max-h-48 overflow-y-auto py-1">
-                    {shown.map((model) => (
-                      <li key={model}>
-                        <label className="flex cursor-pointer items-center gap-2 px-2 py-1 text-sm hover:bg-panel">
-                          <input
-                            type="checkbox"
-                            checked={chosen.has(model)}
-                            onChange={(e) => {
-                              const next = new Set(chosen)
-                              if (e.target.checked) next.add(model)
-                              else next.delete(model)
-                              setChosen(next)
-                            }}
-                          />
-                          <span className="truncate">{model}</span>
-                        </label>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+              <ModelChoice models={models} all={allModels} onAllChange={setAllModels} chosen={chosen} onChosenChange={setChosen} />
               <div className="flex gap-2">
                 <Button type="submit" variant="primary" size="sm" disabled={busy || (!allModels && chosen.size === 0)}>
                   {busy && <Loader2 className="size-3.5 animate-spin" />} Save provider
@@ -285,5 +267,129 @@ function AddProvider({ onAdded }: { onAdded(): Promise<void> }) {
         </form>
       )}
     </div>
+  )
+}
+
+/** Offer every model the key can use, or only those chosen. */
+function ModelChoice({
+  models,
+  all,
+  onAllChange,
+  chosen,
+  onChosenChange,
+}: {
+  models: string[]
+  all: boolean
+  onAllChange(all: boolean): void
+  chosen: Set<string>
+  onChosenChange(chosen: Set<string>): void
+}) {
+  const [filter, setFilter] = useState('')
+  const shown = useMemo(() => models.filter((m) => m.toLowerCase().includes(filter.toLowerCase())), [models, filter])
+  // A chosen model the key no longer lists stays visible, so it can be unticked.
+  const gone = [...chosen].filter((m) => !models.includes(m))
+
+  return (
+    <>
+      <fieldset className="grid gap-2 text-sm">
+        <label className="flex cursor-pointer items-center gap-2">
+          <input type="radio" checked={all} onChange={() => onAllChange(true)} /> Offer every model (new ones appear by themselves)
+        </label>
+        <label className="flex cursor-pointer items-center gap-2">
+          <input type="radio" checked={!all} onChange={() => onAllChange(false)} /> Choose which models to offer
+        </label>
+      </fieldset>
+      {!all && (
+        <div className="rounded-lg border border-line">
+          <div className="flex items-center gap-2 border-b border-line px-2">
+            <Search className="size-3.5 text-faint" />
+            <input className="h-8 w-full bg-transparent text-sm outline-none" placeholder="Filter models" value={filter} onChange={(e) => setFilter(e.target.value)} />
+            <span className="shrink-0 text-xs text-faint">{chosen.size} chosen</span>
+          </div>
+          <ul className="max-h-48 overflow-y-auto py-1">
+            {[...gone, ...shown].map((model) => (
+              <li key={model}>
+                <label className="flex cursor-pointer items-center gap-2 px-2 py-1 text-sm hover:bg-panel">
+                  <input
+                    type="checkbox"
+                    checked={chosen.has(model)}
+                    onChange={(e) => {
+                      const next = new Set(chosen)
+                      if (e.target.checked) next.add(model)
+                      else next.delete(model)
+                      onChosenChange(next)
+                    }}
+                  />
+                  <span className="truncate">{model}</span>
+                  {gone.includes(model) && <span className="shrink-0 text-xs text-faint">(no longer listed)</span>}
+                </label>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </>
+  )
+}
+
+/** Changes a saved provider's name and models, using the key already stored: no need to paste it again. */
+function EditProvider({ provider, onCancel, onSaved }: { provider: WorkspaceProvider; onCancel(): void; onSaved(): Promise<void> }) {
+  const [label, setLabel] = useState(provider.label)
+  const [models, setModels] = useState<string[] | null>(null)
+  const [all, setAll] = useState(provider.models.length === 0)
+  const [chosen, setChosen] = useState(() => new Set(provider.models))
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    api.savedProviderModels(provider.id).then(
+      (check) => setModels(check.models),
+      (e) => setError(e instanceof Error ? e.message : String(e)),
+    )
+  }, [provider.id])
+
+  const save = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      await api.changeWorkspaceProvider(provider.id, { label: label.trim() || provider.label, models: all ? [] : [...chosen] })
+      await onSaved()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+      setBusy(false)
+    }
+  }
+
+  return (
+    <form
+      className="mt-3 ml-7 grid gap-3"
+      onSubmit={(e) => {
+        e.preventDefault()
+        save()
+      }}
+    >
+      <label className="grid gap-1 text-sm">
+        <span className="text-dim">Name in the model list</span>
+        <input className={field} value={label} onChange={(e) => setLabel(e.target.value)} />
+      </label>
+      {models ? (
+        <ModelChoice models={models} all={all} onAllChange={setAll} chosen={chosen} onChosenChange={setChosen} />
+      ) : (
+        !error && (
+          <p className="flex items-center gap-2 text-sm text-dim">
+            <Loader2 className="size-3.5 animate-spin" /> Loading the models this key can use…
+          </p>
+        )
+      )}
+      {error && <p className="text-sm text-danger">{error}</p>}
+      <div className="flex gap-2">
+        <Button type="submit" variant="primary" size="sm" disabled={busy || !models || (!all && chosen.size === 0)}>
+          {busy && <Loader2 className="size-3.5 animate-spin" />} Save changes
+        </Button>
+        <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </form>
   )
 }

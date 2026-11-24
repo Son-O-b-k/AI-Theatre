@@ -46,6 +46,11 @@ export const WorkspaceProviderSchema = z.object({
 
 export type NewProvider = z.infer<typeof WorkspaceProviderSchema>
 
+/** What can change once a provider is saved: its name and which models it offers. The key and address stay. */
+export const WorkspaceProviderChangeSchema = WorkspaceProviderSchema.pick({ label: true, models: true })
+
+export type ProviderChange = z.infer<typeof WorkspaceProviderChangeSchema>
+
 interface Row {
   id: string
   label: string
@@ -72,8 +77,13 @@ function draftProvider(input: NewProvider): Provider {
 
 /** Asks the provider for its models with the key given: proves the key works before it is saved. */
 export async function checkWorkspaceProvider(input: NewProvider): Promise<string[]> {
+  return modelsOf(() => draftProvider(input))
+}
+
+/** Every model a provider lists, with its errors put in words a person can act on. */
+async function modelsOf(provider: () => Provider): Promise<string[]> {
   try {
-    const models = await draftProvider(input).listModels()
+    const models = await provider().listModels()
     if (models.length === 0) throw new Error('it lists no models')
     return models
   } catch (error) {
@@ -101,6 +111,27 @@ export async function addWorkspaceProvider(db: Db, workspaceId: string, input: N
   return (await listWorkspaceProviders(db, workspaceId)).find((p) => p.id === `${WORKSPACE_PREFIX}${id}`)!
 }
 
+async function savedRow(db: Db, workspaceId: string, id: string): Promise<Row> {
+  const row = await db.get<Row>('SELECT * FROM workspace_providers WHERE id = ? AND workspace_id = ?', id.slice(WORKSPACE_PREFIX.length), workspaceId)
+  if (!row) throw new HTTPException(404, { message: 'That AI provider is no longer set up.' })
+  return row
+}
+
+/** Every model a saved provider's key can use, not only those it offers: for choosing again without the key. */
+export async function savedProviderModels(db: Db, workspaceId: string, id: string): Promise<string[]> {
+  const row = await savedRow(db, workspaceId, id)
+  return modelsOf(() => {
+    checkProviderUrl(row.base_url ?? undefined)
+    return fromRow({ ...row, models: '[]' })
+  })
+}
+
+export async function changeWorkspaceProvider(db: Db, workspaceId: string, id: string, change: ProviderChange): Promise<WorkspaceProvider> {
+  const row = await savedRow(db, workspaceId, id)
+  await db.run('UPDATE workspace_providers SET label = ?, models = ? WHERE id = ? AND workspace_id = ?', change.label, JSON.stringify(change.models), row.id, workspaceId)
+  return toInfo({ ...row, label: change.label, models: JSON.stringify(change.models) })
+}
+
 export async function removeWorkspaceProvider(db: Db, workspaceId: string, id: string): Promise<void> {
   await db.run('DELETE FROM workspace_providers WHERE id = ? AND workspace_id = ?', id.slice(WORKSPACE_PREFIX.length), workspaceId)
 }
@@ -125,8 +156,7 @@ export async function workspaceProviders(db: Db, workspaceId: string): Promise<P
 
 /** A ready provider for a job, with its key decrypted. */
 export async function workspaceProvider(db: Db, workspaceId: string, id: string): Promise<Provider> {
-  const row = await db.get<Row>('SELECT * FROM workspace_providers WHERE id = ? AND workspace_id = ?', id.slice(WORKSPACE_PREFIX.length), workspaceId)
-  if (!row) throw new HTTPException(404, { message: 'That AI provider is no longer set up.' })
+  const row = await savedRow(db, workspaceId, id)
   checkProviderUrl(row.base_url ?? undefined)
   return fromRow(row)
 }

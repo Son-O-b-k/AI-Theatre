@@ -7,10 +7,13 @@ import { describeDefault, describeProvider } from '../providers'
 import { hasFeature, planFor, requireFeature } from '../features'
 import {
   addWorkspaceProvider,
+  changeWorkspaceProvider,
   checkWorkspaceProvider,
   listWorkspaceProviders,
   removeWorkspaceProvider,
+  savedProviderModels,
   workspaceProviders,
+  WorkspaceProviderChangeSchema,
   WorkspaceProviderSchema,
 } from '../workspace-providers'
 import * as speech from '../speech'
@@ -45,6 +48,15 @@ export function aiRoutes({ db, billing, providers }: Deps) {
 
   app.post('/workspace-providers', signedIn, requireOwner, requireFeature(billing, 'ownProviders', 'Your own AI provider'), async (c) =>
     c.json(await addWorkspaceProvider(db, c.var.account.workspaceId, WorkspaceProviderSchema.parse(await c.req.json()))),
+  )
+
+  // Every model the saved key can use, for choosing which to offer; the key is never sent back.
+  app.get('/workspace-providers/:id/models', signedIn, requireOwner, async (c) =>
+    c.json({ models: await savedProviderModels(db, c.var.account.workspaceId, c.req.param('id')) }),
+  )
+
+  app.patch('/workspace-providers/:id', signedIn, requireOwner, async (c) =>
+    c.json(await changeWorkspaceProvider(db, c.var.account.workspaceId, c.req.param('id'), WorkspaceProviderChangeSchema.parse(await c.req.json()))),
   )
 
   app.delete('/workspace-providers/:id', signedIn, requireOwner, async (c) => {

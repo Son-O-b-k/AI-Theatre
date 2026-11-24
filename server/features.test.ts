@@ -39,7 +39,7 @@ import * as store from './store'
 import { freshDb } from './test-db'
 import { resolveDefault } from './providers'
 import type { Provider } from './providers/types'
-import { addWorkspaceProvider, checkProviderUrl, listWorkspaceProviders, workspaceProvider } from './workspace-providers'
+import { addWorkspaceProvider, changeWorkspaceProvider, checkProviderUrl, listWorkspaceProviders, savedProviderModels, workspaceProvider } from './workspace-providers'
 
 const inAYear = () => new Date(Date.now() + 365 * 86_400_000)
 
@@ -158,6 +158,19 @@ describe('plan features', () => {
     assert.equal((await listWorkspaceProviders(db, owner.workspaceId)).length, 0, 'nothing saved')
     const saved = await addWorkspaceProvider(db, owner.workspaceId, { ...input, apiKey: 'good' }, check)
     assert.deepEqual([saved.models, tried], [[], ['bad', 'good']])
+  })
+
+  test('a saved provider can change its name and models, and keeps its key', async () => {
+    const added = await addWorkspaceProvider(db, owner.workspaceId, { label: 'Anthropic', kind: 'anthropic', apiKey: 'sk-ant-ours', models: ['claude-a'] })
+    const changed = await changeWorkspaceProvider(db, owner.workspaceId, added.id, { label: 'Claude', models: [] })
+    assert.deepEqual([changed.label, changed.models, changed.hasKey], ['Claude', [], true])
+    assert.deepEqual(await listWorkspaceProviders(db, owner.workspaceId), [changed])
+    const raw = await db.get<{ api_key: string }>('SELECT api_key FROM workspace_providers')
+    assert.ok(raw!.api_key && !raw!.api_key.includes('sk-ant-ours'), 'the key is still stored, encrypted')
+
+    const other = await signUp(db, 'grace@example.com', 'long enough pw')
+    await assert.rejects(changeWorkspaceProvider(db, other.workspaceId, added.id, { label: 'Mine', models: [] }), /no longer set up/)
+    await assert.rejects(savedProviderModels(db, other.workspaceId, added.id), /no longer set up/)
   })
 
   test('private addresses are refused in production unless allowed', () => {

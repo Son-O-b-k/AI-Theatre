@@ -80,6 +80,9 @@ export const api = {
   workspaceProviders: () => call<WorkspaceProvider[]>('/api/workspace-providers'),
   addWorkspaceProvider: (provider: NewWorkspaceProvider) => call<WorkspaceProvider>('/api/workspace-providers', json('POST', provider)),
   removeWorkspaceProvider: (id: string) => call<void>(`/api/workspace-providers/${id}`, { method: 'DELETE' }),
+  savedProviderModels: (id: string) => call<ProviderCheck>(`/api/workspace-providers/${id}/models`),
+  changeWorkspaceProvider: (id: string, change: { label: string; models: string[] }) =>
+    call<WorkspaceProvider>(`/api/workspace-providers/${id}`, json('PATCH', change)),
   checkWorkspaceProvider: (provider: NewWorkspaceProvider) => call<ProviderCheck>('/api/workspace-providers/check', json('POST', provider)),
 
   ssoCheck: (email: string) => call<{ sso: boolean; enforced: boolean }>(`/api/auth/sso?email=${encodeURIComponent(email)}`),
