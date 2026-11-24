@@ -25,7 +25,8 @@ export const JobRequestSchema = z.object({
   prompt: z.string().trim().min(1).max(4000),
   projectId: z.string().regex(/^[\w-]{1,64}$/),
   provider: z.string(),
-  model: z.string().min(1),
+  /** Empty for the server's default model, which the server chooses (jobs.start checks the rest). */
+  model: z.string(),
   voice: z.string(),
   output: z.unknown().optional(),
   language: z.string().optional(),

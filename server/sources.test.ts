@@ -28,6 +28,13 @@ function pdfSaying(text: string): Uint8Array {
   return new TextEncoder().encode(pdf)
 }
 
+describe('lesson requests', () => {
+  test("the server's default model is asked for without naming a model", () => {
+    const request = JobRequestSchema.parse({ mode: 'teach', prompt: 'Cells', projectId: 'p1', provider: 'default', model: '', voice: 'browser' })
+    assert.equal(request.model, '')
+  })
+})
+
 describe('source material', () => {
   test('reads the text of a PDF', async () => {
     const read = await sourceText('notes.pdf', pdfSaying('Plants make sugar from light'))
