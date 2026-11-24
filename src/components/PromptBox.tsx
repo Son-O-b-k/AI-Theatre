@@ -158,7 +158,8 @@ export function PromptBox({
             </span>
           </div>
         )}
-        <div className="flex items-center gap-1.5 px-2.5 pt-1 pb-2.5">
+        {/* Wraps on a phone rather than pushing the send button out of the box. */}
+        <div className="flex flex-wrap items-center gap-1.5 px-2.5 pt-1 pb-2.5">
           {modes.map(({ mode: option, label }) => {
             const Icon = ICONS[option]
             return (
@@ -167,6 +168,8 @@ export function PromptBox({
                 size="sm"
                 variant={option === current.mode ? 'active' : 'ghost'}
                 onClick={() => onModeChange(option)}
+                aria-label={label}
+                title={label}
                 disabled={busy}
               >
                 <Icon className="size-3.5" />
@@ -234,31 +237,31 @@ export function PromptBox({
             </>
           )}
 
-          <span className="min-w-0 flex-1" />
+          <div className="ml-auto flex min-w-0 items-center gap-1.5">
+            {busy && (
+              <span className="flex min-w-0 items-center gap-2 text-xs text-dim">
+                <Loader2 className="size-3.5 shrink-0 animate-spin text-accent" />
+                <span className="truncate">{status}</span>
+              </span>
+            )}
 
-          {busy && (
-            <span className="flex min-w-0 items-center gap-2 text-xs text-dim">
-              <Loader2 className="size-3.5 shrink-0 animate-spin text-accent" />
-              <span className="truncate">{status}</span>
-            </span>
-          )}
-
-          {busy ? (
-            <Button variant="secondary" size="icon" className="rounded-full" onClick={onStop} aria-label="Stop">
-              <Square className="size-3.5 fill-current" />
-            </Button>
-          ) : (
-            <Button
-              variant="primary"
-              size="icon"
-              className="rounded-full"
-              disabled={!canSubmit}
-              onClick={submit}
-              aria-label={current.label}
-            >
-              <ArrowUp className="size-[18px]" strokeWidth={2.5} />
-            </Button>
-          )}
+            {busy ? (
+              <Button variant="secondary" size="icon" className="rounded-full" onClick={onStop} aria-label="Stop">
+                <Square className="size-3.5 fill-current" />
+              </Button>
+            ) : (
+              <Button
+                variant="primary"
+                size="icon"
+                className="rounded-full"
+                disabled={!canSubmit}
+                onClick={submit}
+                aria-label={current.label}
+              >
+                <ArrowUp className="size-[18px]" strokeWidth={2.5} />
+              </Button>
+            )}
+          </div>
         </div>
       </div>
       {sourceError && sourceAllowed && <p className="mt-1.5 px-2 text-xs text-danger">{sourceError}</p>}

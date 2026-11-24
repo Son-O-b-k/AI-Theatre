@@ -55,6 +55,16 @@ body {
   color-scheme: light;
 }
 
+/* iOS Safari zooms the page into any field whose text is under 16px when it is tapped, and stays
+   zoomed. On touch screens, fields use 16px. (Outside a layer, this wins over Tailwind's sizes.) */
+@media (pointer: coarse) {
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
+
 /* Thin, quiet scrollbars for the side panels. */
 * {
   scrollbar-width: thin;
