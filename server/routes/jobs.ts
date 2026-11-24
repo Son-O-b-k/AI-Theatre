@@ -56,13 +56,18 @@ export function jobRoutes({ db }: Deps, jobs: Jobs) {
       const done = new Promise<void>((resolve) => (finished = resolve))
       const queue: JobEvent[] = []
       let writing = Promise.resolve()
-      const unsubscribe = jobs.subscribe(id, workspaceId, (event) => {
+      const send = (event: JobEvent) => {
         queue.push(event)
         writing = writing.then(async () => {
           const next = queue.shift()!
           await out.writeSSE({ data: JSON.stringify(next) })
           if (next.type === 'end') finished()
         })
+      }
+      // An unknown job ends at once, so the app stops waiting rather than reconnecting forever.
+      const unsubscribe = await jobs.subscribe(id, workspaceId, send).catch((error: unknown) => {
+        send({ type: 'end', status: 'failed', error: error instanceof Error ? error.message : String(error) })
+        return () => {}
       })
       out.onAbort(finished)
       await done

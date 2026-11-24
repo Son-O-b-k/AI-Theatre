@@ -1,6 +1,7 @@
 import { DEFAULT_PROVIDER_ID, type ProviderInfo, type ProviderSource } from '../../shared/protocol'
 import type { DefaultModel, ProviderConfig } from '../config'
 import { anthropic } from './anthropic'
+import { explainProviderError } from './errors'
 import { openAiCompatible } from './openai'
 import type { Provider } from './types'
 
@@ -17,7 +18,7 @@ export async function describeProvider(provider: Provider, source: ProviderSourc
   try {
     return { ...info, models: await provider.listModels() }
   } catch (error) {
-    return { ...info, models: [], error: error instanceof Error ? error.message : String(error) }
+    return { ...info, models: [], error: explainProviderError(error, { label: provider.label, kind: provider.kind, own: source === 'own' }) }
   }
 }
 

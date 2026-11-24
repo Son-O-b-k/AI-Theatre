@@ -1,11 +1,12 @@
 import { readLines } from '../../shared/lines'
+import { detailOf, ProviderHttpError } from './errors'
 
-/** `fetch` that throws a readable error for non-2xx responses. */
+/** `fetch` that throws a ProviderHttpError for non-2xx responses (errors.ts puts it in words). */
 export async function request(url: string, init: RequestInit): Promise<Response> {
   const response = await fetch(url, init)
   if (!response.ok) {
-    const detail = (await response.text()).slice(0, 500)
-    throw new Error(`${response.status} ${response.statusText} from ${new URL(url).host}: ${detail}`)
+    const detail = detailOf((await response.text()).slice(0, 2000)).slice(0, 500) || response.statusText
+    throw new ProviderHttpError(response.status, new URL(url).host, detail)
   }
   return response
 }

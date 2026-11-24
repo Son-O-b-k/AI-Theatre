@@ -8,6 +8,7 @@
 import { LESSON_TOKENS } from '../../shared/plans'
 import { DEFAULT_PROVIDER_ID, type ChatMessage, type Delivery, type JobEvent, type JobMode, type JobRequest } from '../../shared/protocol'
 import { generateScene, planLesson, type Complete } from '../../src/ai/generate'
+import type { Chapter } from '../../src/ai/prompts'
 import { DEFAULT_LANGUAGE } from '../../shared/languages'
 import { chapterMessages, inFormat, inLanguage, planMessages, refineMessages, sceneMessages } from '../../src/ai/prompts'
 import { record, unrecorded, withNarration } from '../../src/narration'
@@ -23,6 +24,7 @@ import * as speech from '../speech'
 import { planFor } from '../features'
 import { isWorkspaceProvider, workspaceProvider } from '../workspace-providers'
 import { OWN_KEY_USAGE } from '../billing/repo'
+import { explainProviderError } from '../providers/errors'
 
 export class JobError extends Error {
   constructor(message: string, readonly status: 400 | 402 | 404 | 409 = 400) {
@@ -34,6 +36,8 @@ export class JobError extends Error {
 const NEEDS: Record<JobMode, number> = { teach: 1, scene: 0.25, refine: 0.25 }
 /** Finished jobs stay in memory this long, for an app that reconnects. */
 const KEEP_FINISHED_MS = 10 * 60_000
+/** A job that was running when the server stopped this many times is not resumed again: it may be the cause. */
+const MAX_ATTEMPTS = 3
 /** At most this many live previews a second, per job. */
 const LIVE_INTERVAL_MS = 150
 
@@ -87,9 +91,39 @@ export class Jobs {
     private readonly providers: Map<string, Provider>,
   ) {}
 
-  /** Jobs cut short by a restart are marked failed; their finished chapters can still be claimed. */
+  /**
+   * Jobs cut short by a restart (a deploy, a crash) carry on where they stopped: a lesson keeps its
+   * plan and the chapters already finished, and writes the rest. A job that cannot be carried on
+   * (its key was removed, or it was cut short too often) is marked failed; what it finished can still be claimed.
+   */
   async recover(): Promise<void> {
-    await this.db.run("UPDATE jobs SET status = 'failed', error = 'The server restarted.', finished_at = ? WHERE status = 'running'", now())
+    const rows = await this.db.all<JobRow>("SELECT id, workspace_id, project_id, request, outline, attempts FROM jobs WHERE status = 'running'")
+    for (const row of rows) {
+      try {
+        await this.resume(row)
+      } catch (error) {
+        const reason = error instanceof JobError ? error.message : 'The server restarted.'
+        if (!(error instanceof JobError)) console.error(`Job ${row.id} could not be resumed:`, error)
+        await this.db.run("UPDATE jobs SET status = 'failed', error = ?, finished_at = ? WHERE id = ?", reason, now(), row.id)
+      }
+    }
+  }
+
+  private async resume(row: JobRow): Promise<void> {
+    if (!row.request || Number(row.attempts) + 1 >= MAX_ATTEMPTS) throw new JobError('The server restarted.')
+    const stored = JSON.parse(row.request) as JobRequest
+    const own = isWorkspaceProvider(stored.provider)
+    const provider = own ? await workspaceProvider(this.db, row.workspace_id, stored.provider).catch(() => undefined) : this.providers.get(stored.provider)
+    if (!provider) throw new JobError('The server restarted, and the AI model this lesson was written with is no longer set up.')
+
+    await this.db.run('UPDATE jobs SET attempts = attempts + 1 WHERE id = ?', row.id)
+    const job = new Job(row.id, row.workspace_id, row.project_id)
+    const finished = await this.db.all<{ id: string; output: string }>('SELECT id, output FROM job_outputs WHERE job_id = ? ORDER BY created_at', row.id)
+    // Whoever reconnects sees the chapters already finished, as if nothing had happened.
+    for (const { id, output } of finished) job.emit({ type: 'output', delivery: { id, output: JSON.parse(output) } })
+    this.jobs.set(job.id, job)
+    const outline = row.outline ? (JSON.parse(row.outline) as Chapter[]) : undefined
+    this.run(job, provider, stored, own, { outline, done: finished.length }).catch((error) => console.error(`Job ${job.id} failed to finish:`, error))
   }
 
   async start(account: Account, request: JobRequest): Promise<string> {
@@ -143,19 +177,32 @@ export class Jobs {
     }
 
     const job = new Job(newId(), workspaceId, request.projectId)
+    const accepted: JobRequest = { ...request, voice, language }
+    // Kept so the job can carry on after a restart (recover); the provider's key is not in it.
     await this.db.run(
-      "INSERT INTO jobs (id, workspace_id, project_id, mode, prompt, status, created_at) VALUES (?, ?, ?, ?, ?, 'running', ?)",
-      job.id, workspaceId, request.projectId, request.mode, request.prompt, now(),
+      "INSERT INTO jobs (id, workspace_id, project_id, mode, prompt, status, created_at, request) VALUES (?, ?, ?, ?, ?, 'running', ?, ?)",
+      job.id, workspaceId, request.projectId, request.mode, request.prompt, now(), JSON.stringify(accepted),
     )
     this.jobs.set(job.id, job)
     // Runs in the background; an error escaping it would crash the server, so it is logged instead.
-    this.run(job, provider, { ...request, voice, language }, own).catch((error) => console.error(`Job ${job.id} failed to finish:`, error))
+    this.run(job, provider, accepted, own).catch((error) => console.error(`Job ${job.id} failed to finish:`, error))
     return job.id
   }
 
-  /** Streams the job's events, starting with what already happened. Returns the unsubscribe. */
-  subscribe(jobId: string, workspaceId: string, listener: Listener): () => void {
-    const job = this.find(jobId, workspaceId)
+  /**
+   * Streams the job's events, starting with what already happened. Returns the unsubscribe.
+   * A job finished long ago is no longer in memory; it only ends, so an app that was away for a
+   * while stops waiting (and collects the chapters with `unclaimed`).
+   */
+  async subscribe(jobId: string, workspaceId: string, listener: Listener): Promise<() => void> {
+    const job = this.jobs.get(jobId)
+    if (!job || job.workspaceId !== workspaceId) {
+      const row = await this.db.get<{ status: string; error: string | null }>('SELECT status, error FROM jobs WHERE id = ? AND workspace_id = ?', jobId, workspaceId)
+      if (!row) throw new JobError('No such job.', 404)
+      const status = row.status === 'done' || row.status === 'cancelled' ? row.status : 'failed'
+      listener({ type: 'end', status, error: status === 'failed' ? (row.error ?? 'Writing the lesson stopped.') : undefined })
+      return () => {}
+    }
     for (const event of job.snapshot()) listener(event)
     job.listeners.add(listener)
     return () => job.listeners.delete(listener)
@@ -190,7 +237,8 @@ export class Jobs {
     return job
   }
 
-  private async run(job: Job, provider: Provider, request: JobRequest, own: boolean): Promise<void> {
+  /** Writes what was asked; `resume` carries on a job a restart cut short (its plan, and how many chapters were finished). */
+  private async run(job: Job, provider: Provider, request: JobRequest, own: boolean, resume?: { outline?: Chapter[]; done: number }): Promise<void> {
     const { signal } = job.abort
     const turn: Turn = { prompt: request.prompt, provider: request.provider, model: request.model, at: now() }
 
@@ -253,19 +301,28 @@ export class Jobs {
       })
     }
 
+    if (resume) job.emit({ type: 'warning', message: 'the server restarted while writing; it carried on where it stopped' })
+
     let status: 'done' | 'failed' | 'cancelled' = 'done'
     let error: string | undefined
     try {
-      if (request.mode === 'refine') {
+      if (request.mode !== 'teach' && resume && resume.done > 0) {
+        // The chapter was finished before the restart; nothing is left to write.
+      } else if (request.mode === 'refine') {
         const output = request.output as Output
         await deliver(reviseOutput(output, await scene('Revising', refineMessages(output.scene, request.prompt)), turn))
       } else if (request.mode === 'scene') {
         await deliver(newOutput(titleFrom(request.prompt), await scene('Writing scene', sceneMessages(request.prompt, request.source)), turn))
       } else {
-        job.emit({ type: 'status', text: 'Planning the lesson…' })
-        const outline = await planLesson(complete, inLanguage(planMessages(request.prompt, request.source), language), signal)
+        let outline = resume?.outline
+        if (!outline) {
+          job.emit({ type: 'status', text: 'Planning the lesson…' })
+          outline = await planLesson(complete, inLanguage(planMessages(request.prompt, request.source), language), signal)
+          await this.db.run('UPDATE jobs SET outline = ? WHERE id = ?', JSON.stringify(outline), job.id)
+        }
         const titles = outline.map((chapter) => chapter.title)
         for (const [index, chapter] of outline.entries()) {
+          if (index < (resume?.done ?? 0)) continue
           const left = index > 0 && (await this.billing.entitlements(job.workspaceId))
           if (left && !(own ? left.canGenerateOwnKey : left.canGenerate)) {
             job.emit({ type: 'warning', message: `stopped after ${index} chapters: this month's allowance is used up` })
@@ -279,13 +336,26 @@ export class Jobs {
       }
     } catch (caught) {
       status = signal.aborted ? 'cancelled' : 'failed'
-      error = signal.aborted ? undefined : message(caught)
+      if (!signal.aborted) {
+        error = explainProviderError(caught, { label: provider.label, kind: provider.kind, model: request.model, own })
+        // The server's own model failing is for whoever runs the server to fix; they see the details here.
+        if (error !== message(caught)) console.error(`Job ${job.id} failed: ${message(caught)}`)
+      }
     }
 
     await this.db.run('UPDATE jobs SET status = ?, error = ?, finished_at = ? WHERE id = ?', status, error ?? null, now(), job.id)
     job.emit({ type: 'end', status, error })
     setTimeout(() => this.jobs.delete(job.id), KEEP_FINISHED_MS).unref()
   }
+}
+
+interface JobRow {
+  id: string
+  workspace_id: string
+  project_id: string
+  request: string | null
+  outline: string | null
+  attempts: number
 }
 
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error))

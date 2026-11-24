@@ -185,4 +185,12 @@ export const MIGRATIONS: Migration[] = [
       expires_at TEXT NOT NULL
     );`,
   ),
+  // Jobs pick up where they left off after a restart: what was asked, the lesson's plan once made,
+  // and how many times the job was resumed (a job that keeps stopping the server is not run again).
+  sql(
+    () => `
+    ALTER TABLE jobs ADD COLUMN request TEXT;
+    ALTER TABLE jobs ADD COLUMN outline TEXT;
+    ALTER TABLE jobs ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0;`,
+  ),
 ]

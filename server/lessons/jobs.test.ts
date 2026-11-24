@@ -11,6 +11,7 @@ import { DevBillingProvider } from '../billing/providers/dev'
 import { Billing } from '../billing/service'
 import type { Db } from '../db'
 import type { Provider } from '../providers/types'
+import { detailOf, explainProviderError, ProviderHttpError } from '../providers/errors'
 import { freshDb } from '../test-db'
 import { JobError, Jobs } from './jobs'
 
@@ -175,9 +176,80 @@ describe('lesson jobs', () => {
     assert.deepEqual((await ended).at(-1), { type: 'end', status: 'cancelled', error: undefined })
   })
 
-  test('jobs cut short by a restart are marked failed', async () => {
-    await db.run("INSERT INTO jobs (id, workspace_id, project_id, mode, prompt, status, created_at) VALUES ('j1', ?, 'p1', 'teach', 'x', 'running', 'now')", account.workspaceId)
+  test('a lesson cut short by a restart carries on from its plan and finished chapters', async () => {
+    const calls: string[] = []
+    const provider = scriptedProvider()
+    const counting: Provider = { ...provider, stream: (req, signal) => (calls.push(req.system === PLAN_SYSTEM ? 'plan' : 'chapter'), provider.stream(req, signal)) }
+    // The first server wrote the plan and chapter 1, then stopped.
+    const stored = { ...request('teach'), provider: 'scripted', model: 'm' }
+    const outline = CHAPTERS.map(({ title, goal }) => ({ title, goal }))
+    await db.run(
+      "INSERT INTO jobs (id, workspace_id, project_id, mode, prompt, status, created_at, request, outline) VALUES ('j1', ?, 'p1', 'teach', 'x', 'running', 'now', ?, ?)",
+      account.workspaceId, JSON.stringify(stored), JSON.stringify(outline),
+    )
+    await db.run("INSERT INTO job_outputs (id, job_id, workspace_id, project_id, output, created_at) VALUES ('d1', 'j1', ?, 'p1', ?, 'now')", account.workspaceId, JSON.stringify({ id: 'o1', title: 'Tokens' }))
+
+    const jobs = jobsWith(counting)
+    await jobs.recover()
+    assert.deepEqual(jobs.active(account.workspaceId), { id: 'j1', projectId: 'p1' })
+    const events = await finish(jobs, 'j1')
+    const outputs = events.filter((e) => e.type === 'output').map((e) => (e.delivery.output as Output).title)
+    assert.deepEqual(outputs, ['Tokens', 'Attention'])
+    assert.deepEqual(calls, ['chapter'], 'neither the plan nor the finished chapter is written again')
+    assert.deepEqual(events.at(-1), { type: 'end', status: 'done', error: undefined })
+    assert.equal((await db.get<{ attempts: number }>("SELECT attempts FROM jobs WHERE id = 'j1'"))!.attempts, 1)
+  })
+
+  test('jobs that cannot carry on after a restart are marked failed', async () => {
+    const insert = (id: string, request: string | null, attempts = 0) =>
+      db.run("INSERT INTO jobs (id, workspace_id, project_id, mode, prompt, status, created_at, request, attempts) VALUES (?, ?, 'p1', 'teach', 'x', 'running', 'now', ?, ?)", id, account.workspaceId, request, attempts)
+    await insert('old', null) // from before jobs were kept
+    await insert('tired', JSON.stringify({ ...request('teach'), provider: 'scripted', model: 'm' }), 2)
+    await insert('gone', JSON.stringify({ ...request('teach'), provider: 'removed', model: 'm' }))
     await jobsWith(scriptedProvider()).recover()
-    assert.deepEqual({ ...(await db.get<{ status: string; error: string }>('SELECT status, error FROM jobs WHERE id = ?', 'j1')) }, { status: 'failed', error: 'The server restarted.' })
+    const status = async (id: string) => ({ ...(await db.get<{ status: string; error: string }>('SELECT status, error FROM jobs WHERE id = ?', id)) })
+    assert.deepEqual(await status('old'), { status: 'failed', error: 'The server restarted.' })
+    assert.deepEqual(await status('tired'), { status: 'failed', error: 'The server restarted.' })
+    assert.equal((await status('gone')).status, 'failed')
+    assert.match((await status('gone')).error, /no longer set up/)
+  })
+
+  test('a job no longer in memory still ends for an app that comes back late', async () => {
+    const id = await jobsWith(scriptedProvider()).start(account, request('scene'))
+    const later = jobsWith(scriptedProvider())
+    // Once the job is written, ask a server that never ran it (the first one's memory is gone).
+    for (let i = 0; i < 50 && (await db.get<{ status: string }>('SELECT status FROM jobs WHERE id = ?', id))!.status === 'running'; i++) await new Promise((r) => setTimeout(r, 10))
+    assert.deepEqual(await finish(later, id), [{ type: 'end', status: 'done', error: undefined }])
+    await assert.rejects(later.subscribe('nope', account.workspaceId, () => {}), (e: JobError) => e.status === 404)
+  })
+
+  test('provider errors are put in plain words', async () => {
+    const failing: Provider = {
+      ...scriptedProvider(),
+      // eslint-disable-next-line require-yield
+      async *stream() {
+        throw new ProviderHttpError(400, 'api.anthropic.com', 'Your credit balance is too low to access the Anthropic API.')
+      },
+    }
+    const events = await (async () => {
+      const jobs = jobsWith(failing)
+      return finish(jobs, await jobs.start(account, request('scene')))
+    })()
+    const end = events.at(-1) as Extract<JobEvent, { type: 'end' }>
+    assert.equal(end.status, 'failed')
+    assert.match(end.error!, /AI Theatre’s model is not available right now/)
+
+    const own = { label: 'Anthropic', kind: 'anthropic', model: 'claude-x', own: true }
+    const credit = new ProviderHttpError(400, 'api.anthropic.com', 'Your credit balance is too low to access the Anthropic API.')
+    assert.match(explainProviderError(credit, own), /Your Anthropic account is out of credit/)
+    assert.match(explainProviderError(new ProviderHttpError(401, 'h', 'invalid x-api-key'), own), /did not accept the API key/)
+    assert.match(explainProviderError(new ProviderHttpError(404, 'h', 'model: claude-x'), own), /does not offer the model “claude-x”/)
+    assert.match(explainProviderError(new ProviderHttpError(529, 'h', 'Overloaded'), own), /having trouble/)
+    assert.match(explainProviderError(new ProviderHttpError(429, 'h', 'rate limit'), own), /too many requests/)
+    const refused = Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNREFUSED' } })
+    assert.match(explainProviderError(refused, { ...own, label: 'My Ollama', kind: 'ollama' }), /Is Ollama running/)
+    assert.equal(explainProviderError(new Error('The model did not produce any elements.'), own), 'The model did not produce any elements.')
+    assert.equal(detailOf('{"type":"error","error":{"type":"x","message":"Bad key"}}'), 'Bad key')
+    assert.equal(detailOf('{"error":"model \'x\' not found"}'), "model 'x' not found")
   })
 })

@@ -136,6 +136,9 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
   const player = useRef<PlayerHandle | null>(null)
 
   const output = selected === LIVE ? null : (outputs.find((o) => o.id === selected) ?? outputs[0] ?? null)
+  // A lesson with no chapters yet (its writing failed, or they were all deleted) has nothing to change.
+  const lessonModes = outputs.length > 0 ? LESSON_MODES : LESSON_MODES.filter((m) => m.mode !== 'refine')
+  const promptMode: Mode = mode === 'refine' && outputs.length === 0 ? 'scene' : mode
   const outputIndex = output ? outputs.indexOf(output) : -1
 
   // Finished chapters only take over the screen if the user is still watching the live one.
@@ -485,10 +488,10 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
                 size="bar"
                 value={prompt}
                 onValueChange={setPrompt}
-                modes={LESSON_MODES}
-                mode={mode}
+                modes={lessonModes}
+                mode={promptMode}
                 onModeChange={setMode}
-                disabled={mode === 'refine' && !output}
+                disabled={promptMode === 'refine' && !output}
                 busy={generator.busy}
                 status={generator.status || 'Generating…'}
                 warnings={generator.warnings}

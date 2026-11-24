@@ -9,6 +9,7 @@ import type { WorkspaceProvider } from '../shared/protocol'
 import type { ProviderConfig } from './config'
 import { newId, now, type Db } from './db'
 import { createProvider, type Provider } from './providers'
+import { explainProviderError } from './providers/errors'
 import { decrypt, encrypt } from './secrets'
 
 /** Workspace providers have ids "ws-<id>", so they never clash with the server's own. */
@@ -82,16 +83,16 @@ export async function checkWorkspaceProvider(input: NewProvider): Promise<string
 
 /** Every model a provider lists, with its errors put in words a person can act on. */
 async function modelsOf(provider: () => Provider): Promise<string[]> {
+  let listing: Provider | undefined
   try {
-    const models = await provider().listModels()
-    if (models.length === 0) throw new Error('it lists no models')
+    listing = provider()
+    const models = await listing.listModels()
+    if (models.length === 0) throw new Error('It lists no models. Name the models to use instead.')
     return models
   } catch (error) {
     if (error instanceof HTTPException) throw error
-    const reason = error instanceof Error ? error.message : String(error)
-    if (/^40[13]\b/.test(reason)) throw new HTTPException(400, { message: 'The provider did not accept that key. Check it and try again.' })
-    // Only the first line: providers answer with whole JSON documents.
-    throw new HTTPException(400, { message: `Could not connect: ${reason.split('\n')[0].slice(0, 160)}` })
+    const context = { label: listing?.label ?? 'The provider', kind: listing?.kind ?? 'openai', own: true }
+    throw new HTTPException(400, { message: explainProviderError(error, context) })
   }
 }
 

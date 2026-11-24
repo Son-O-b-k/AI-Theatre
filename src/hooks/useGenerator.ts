@@ -70,31 +70,53 @@ export function useGenerator({ target, voice, project, output, create, update, s
     [update, save],
   )
 
-  /** Follows a job until it ends; resolves with the ids of the chapters it delivered. */
+  /**
+   * Follows a job until it ends; resolves with the ids of the chapters it delivered. The browser
+   * reconnects by itself after a dropped connection; when it gives up (the server was down) this
+   * opens the stream again, and the server ends a job it no longer has, so nothing waits forever.
+   */
   const follow = useCallback(
     (jobId: string, forProject: string) =>
       new Promise<string[]>((resolve) => {
         const delivered: string[] = []
+        let retries = 0
         setStatus('Starting…')
-        const source = api.jobEvents(jobId, (event: JobEvent) => {
-          if (event.type === 'status') setStatus(event.text)
-          else if (event.type === 'plan') setPlan({ titles: event.titles, index: event.index })
-          else if (event.type === 'live') setLive(event.scene as Scene)
-          else if (event.type === 'warning') setWarnings((current) => (current.includes(event.message) ? current : [...current, event.message]))
-          else if (event.type === 'output') {
-            delivered.push((event.delivery.output as Output).id)
-            receive(forProject, [event.delivery]).catch(onError)
-          } else {
-            source.close()
-            following.current = null
-            setLive(null)
-            setPlan(null)
-            setStatus('')
-            if (event.status === 'failed') onError(new Error(event.error ?? 'Writing the lesson failed.'))
-            resolve(delivered)
+        const listen = () => {
+          const source = api.jobEvents(jobId, (event: JobEvent) => {
+            retries = 0
+            if (event.type === 'status') setStatus(event.text)
+            else if (event.type === 'plan') setPlan({ titles: event.titles, index: event.index })
+            else if (event.type === 'live') setLive(event.scene as Scene)
+            else if (event.type === 'warning') setWarnings((current) => (current.includes(event.message) ? current : [...current, event.message]))
+            else if (event.type === 'output') {
+              delivered.push((event.delivery.output as Output).id)
+              receive(forProject, [event.delivery]).catch(onError)
+            } else {
+              source.close()
+              following.current = null
+              setLive(null)
+              setPlan(null)
+              setStatus('')
+              if (event.status === 'failed') onError(new Error(event.error ?? 'Writing the lesson failed.'))
+              // Chapters finished while this page was away are collected now.
+              api.deliveries(forProject).then((deliveries) => receive(forProject, deliveries)).catch(onError)
+              resolve(delivered)
+            }
+          })
+          source.onerror = () => {
+            if (source.readyState !== EventSource.CLOSED || following.current?.source !== source) return
+            if (++retries > 30) {
+              following.current = null
+              setStatus('')
+              onError(new Error('Lost touch with the server. Reload the page to see the lesson.'))
+              resolve(delivered)
+              return
+            }
+            setTimeout(() => following.current?.source === source && listen(), Math.min(30_000, 2000 * retries))
           }
-        })
-        following.current = { jobId, source }
+          following.current = { jobId, source }
+        }
+        listen()
       }),
     [receive, onError],
   )
@@ -139,7 +161,13 @@ export function useGenerator({ target, voice, project, output, create, update, s
       .catch(onError)
   }, [openId, receive, follow, onError])
 
-  useEffect(() => () => following.current?.source.close(), [])
+  useEffect(
+    () => () => {
+      following.current?.source.close()
+      following.current = null
+    },
+    [],
+  )
 
   /** Records the narration of chapters in `voice` (or switches them to the browser voice). */
   const narrate = useCallback(
