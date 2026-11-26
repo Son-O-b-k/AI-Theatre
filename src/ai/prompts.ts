@@ -15,7 +15,7 @@ const { chapters, beats, shapesPerBoard, labelWords, noteWords } = LESSON_RULES
 // Drawings are only offered while the content library has some (content/illustrations).
 const illustrations = ILLUSTRATION_NAMES.map((name) => `${name} (${ILLUSTRATIONS[name].about})`).join('; ')
 const illustrationElement = illustrations
-  ? '\n- {"op":"el","id","kind":"illustration","art","label"} a detailed drawing that sketches itself in. "art" is one of the illustrations listed below.'
+  ? '\n- {"op":"el","id","kind":"illustration","art","label"} a detailed drawing that sketches itself in. "art" is one of the illustrations listed below. Optional "accent": the colour of its details.'
   : ''
 const illustrationList = illustrations ? `\nIllustrations: ${illustrations}.` : ''
 const illustrationChoice = illustrations ? ' a real thing from the illustrations list → illustration;' : ''
@@ -57,9 +57,11 @@ ELEMENTS (declare them on the current board before the beats that use them)
 - {"op":"el","id","kind":"counter","from":100,"to":163,"prefix":"$","suffix":"","label"} a big number that counts from one value to the other as it appears. Optional "decimals".
 - {"op":"el","id","kind":"timeline","points":[{"at":"1969","label":"Moon landing"}]} dated moments (2 to 8), revealed left to right.
 - {"op":"el","id","kind":"table","columns":["","Cat","Dog"],"rows":[["Legs","4","4"]]} a small table (up to 5 columns, 7 rows), revealed row by row.
-- {"op":"el","id","kind":"group","label":"Before","contains":["a","b"]} a labelled frame around shapes declared on this board. Showing, hiding or focusing the group does the same to the shapes inside. Two groups side by side compare before and after, or inside and outside.
+- {"op":"el","id","kind":"group","label":"Before","contains":["a","b"]} a labelled frame around shapes declared on this board. Showing, hiding or focusing the group does the same to the shapes inside. Two groups side by side compare before and after, or inside and outside. Optional "style":"window" draws it as a window with a title bar: a computer, a server, an app, with its parts inside.
 - {"op":"el","id","kind":"text","text"} a short handwritten note, definition or formula shown under the diagram (under ${noteWords} words).
 - {"op":"link","id","from","to","label"} an arrow between two shapes on the same board. Optional dashed.
+Optional "mark" on a box, circle, icon or illustration puts a badge on its corner: "ok" (✓ works, done), "no" (✗ fails, down), "ask" (? unknown, a question), "warn" (! a warning). The badge appears with the shape; to show a state changing, hide the shape and show another one with the new mark.
+Optional "blocked":true on a link puts a ✗ on it: a connection that does not get through.
 Every shape needs a short label (1 to ${labelWords} words). Optional "color": ${Object.keys(PALETTE).join(', ')}. Use one colour per concept and keep it.
 Icons: ${ICON_NAMES.join(', ')}.${illustrationList}
 
@@ -89,7 +91,7 @@ TEACHING
 - Make the mechanism visible: use links and travelling dots for flows, focus and highlight for what matters, a new board for a new idea.
 - Pick the element that shows the idea best, not a box with words in it:
   amounts that grow, shrink or compare → chart; one striking number → counter; anything with dates → timeline;
-  properties side by side → table; before and after, or inside and outside → two groups;
+  properties side by side → table; before and after, or inside and outside → two groups; a computer, server or app and what runs in it → a window group;
   ${illustrationChoice.trimStart()} abstract steps and parts → boxes, circles and icons.
 - Write ${beats.usualMin} to ${beats.usualMax} beats per chapter (never more than ${beats.max}) in plain, friendly language. End with a one-sentence recap beat.`
 

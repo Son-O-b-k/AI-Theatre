@@ -1,67 +1,258 @@
 {
   "atom": {
     "about": "an atom: nucleus of protons and neutrons with electrons on three orbits",
-    "tags": ["physics", "chemistry", "science"],
+    "tags": [
+      "physics",
+      "chemistry",
+      "science"
+    ],
     "credit": "Original drawing for AI Theatre"
   },
   "bank": {
     "about": "a classical bank building with columns",
-    "tags": ["finance", "money", "economy"],
+    "tags": [
+      "finance",
+      "money",
+      "economy"
+    ],
+    "credit": "Original drawing for AI Theatre"
+  },
+  "browser": {
+    "about": "a web browser window showing a web page or web app",
+    "tags": [
+      "internet",
+      "web",
+      "software",
+      "apps"
+    ],
     "credit": "Original drawing for AI Theatre"
   },
   "cell-tower": {
     "about": "a radio mast sending out signal waves",
-    "tags": ["networks", "mobile", "radio", "telecoms"],
+    "tags": [
+      "networks",
+      "mobile",
+      "radio",
+      "telecoms"
+    ],
     "credit": "Original drawing for AI Theatre"
   },
   "city": {
     "about": "a city skyline of office towers",
-    "tags": ["urban", "economy", "population", "infrastructure"],
+    "tags": [
+      "urban",
+      "economy",
+      "population",
+      "infrastructure"
+    ],
+    "credit": "Original drawing for AI Theatre"
+  },
+  "cloud": {
+    "about": "the cloud: a cloud with arrows for data going up and down",
+    "tags": [
+      "internet",
+      "servers",
+      "storage",
+      "networks"
+    ],
+    "credit": "Original drawing for AI Theatre"
+  },
+  "database": {
+    "about": "a database: a stack of disks shaped like a cylinder",
+    "tags": [
+      "data",
+      "software",
+      "servers",
+      "storage"
+    ],
+    "credit": "Original drawing for AI Theatre"
+  },
+  "desktop": {
+    "about": "a desktop computer monitor on a stand",
+    "tags": [
+      "devices",
+      "computers",
+      "office"
+    ],
     "credit": "Original drawing for AI Theatre"
   },
   "dna": {
     "about": "a DNA double helix with base pairs",
-    "tags": ["biology", "genetics"],
+    "tags": [
+      "biology",
+      "genetics"
+    ],
+    "credit": "Original drawing for AI Theatre"
+  },
+  "envelope": {
+    "about": "an envelope: a message, an email or a packet of data",
+    "tags": [
+      "messages",
+      "email",
+      "networks",
+      "post"
+    ],
     "credit": "Original drawing for AI Theatre"
   },
   "factory": {
     "about": "a factory with a smoking chimney",
-    "tags": ["industry", "manufacturing", "pollution", "energy"],
+    "tags": [
+      "industry",
+      "manufacturing",
+      "pollution",
+      "energy"
+    ],
+    "credit": "Original drawing for AI Theatre"
+  },
+  "firewall": {
+    "about": "a firewall: a brick wall with a flame, blocking unwanted traffic",
+    "tags": [
+      "security",
+      "networks",
+      "internet"
+    ],
+    "credit": "Original drawing for AI Theatre"
+  },
+  "gear": {
+    "about": "a gear (cog): a running service, a process, settings or machinery",
+    "tags": [
+      "software",
+      "engineering",
+      "process",
+      "machines"
+    ],
     "credit": "Original drawing for AI Theatre"
   },
   "globe": {
     "about": "the Earth as a globe with continents and lines of latitude",
-    "tags": ["geography", "world", "climate", "internet"],
+    "tags": [
+      "geography",
+      "world",
+      "climate",
+      "internet"
+    ],
     "credit": "Original drawing for AI Theatre"
   },
   "heart": {
     "about": "a human heart with its main blood vessels",
-    "tags": ["biology", "anatomy", "health", "medicine"],
+    "tags": [
+      "biology",
+      "anatomy",
+      "health",
+      "medicine"
+    ],
+    "credit": "Original drawing for AI Theatre"
+  },
+  "laptop": {
+    "about": "an open laptop with a web page on its screen",
+    "tags": [
+      "devices",
+      "computers",
+      "networks"
+    ],
+    "credit": "Original drawing for AI Theatre"
+  },
+  "lock": {
+    "about": "a padlock: security, encryption, a password, something kept private",
+    "tags": [
+      "security",
+      "privacy",
+      "encryption"
+    ],
     "credit": "Original drawing for AI Theatre"
   },
   "microchip": {
     "about": "a computer chip with its pins",
-    "tags": ["computing", "hardware", "electronics"],
+    "tags": [
+      "computing",
+      "hardware",
+      "electronics"
+    ],
+    "credit": "Original drawing for AI Theatre"
+  },
+  "network-port": {
+    "about": "a network (Ethernet) port, the socket a cable plugs into",
+    "tags": [
+      "networks",
+      "hardware",
+      "ports"
+    ],
+    "credit": "Original drawing for AI Theatre"
+  },
+  "network-switch": {
+    "about": "a network switch: a flat box with a row of cable ports and lights",
+    "tags": [
+      "networks",
+      "data centre",
+      "hardware"
+    ],
+    "credit": "Original drawing for AI Theatre"
+  },
+  "person": {
+    "about": "a person, a user or a customer",
+    "tags": [
+      "people",
+      "users",
+      "customers"
+    ],
+    "credit": "Original drawing for AI Theatre"
+  },
+  "phone": {
+    "about": "a smartphone showing an app with a map and a button",
+    "tags": [
+      "devices",
+      "mobile",
+      "apps",
+      "networks"
+    ],
     "credit": "Original drawing for AI Theatre"
   },
   "plant-cell": {
     "about": "a plant cell: wall, membrane, nucleus, vacuole and chloroplasts",
-    "tags": ["biology", "plants", "cells"],
+    "tags": [
+      "biology",
+      "plants",
+      "cells"
+    ],
     "credit": "Original drawing for AI Theatre"
   },
   "rocket": {
     "about": "a rocket lifting off with flames",
-    "tags": ["space", "physics", "engineering", "launch"],
+    "tags": [
+      "space",
+      "physics",
+      "engineering",
+      "launch"
+    ],
+    "credit": "Original drawing for AI Theatre"
+  },
+  "router": {
+    "about": "a home Wi-Fi router with two antennas and status lights",
+    "tags": [
+      "networks",
+      "internet",
+      "wifi"
+    ],
     "credit": "Original drawing for AI Theatre"
   },
   "server-rack": {
     "about": "a rack of servers with status lights",
-    "tags": ["computing", "cloud", "data centre", "web"],
+    "tags": [
+      "computing",
+      "cloud",
+      "data centre",
+      "web"
+    ],
     "credit": "Original drawing for AI Theatre"
   },
   "tree": {
     "about": "a tree with its roots spreading under the ground",
-    "tags": ["nature", "plants", "ecology", "growth"],
+    "tags": [
+      "nature",
+      "plants",
+      "ecology",
+      "growth"
+    ],
     "credit": "Original drawing for AI Theatre"
   }
 }

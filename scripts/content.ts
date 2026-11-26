@@ -85,21 +85,42 @@ const NAMED: Record<string, string> = { black: '#000', white: '#fff', gray: '#80
 
 /** Lightness 0 (black) to 1 (white); colours that cannot be read count as a mid tone. */
 function lightness(color: string): number {
-  const value = NAMED[color.toLowerCase()] ?? color
-  if (/^currentcolor$/i.test(value)) return 0
-  let rgb: number[] | undefined
-  const hex = value.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i)?.[1]
-  if (hex) rgb = (hex.length === 3 ? [...hex].map((c) => c + c) : hex.match(/../g)!).map((h) => Number.parseInt(h, 16))
-  const fn = value.match(/^rgba?\(([^)]+)\)$/i)?.[1]
-  if (fn) rgb = fn.split(/[\s,/]+/).slice(0, 3).map((part) => Number.parseFloat(part))
-  if (!rgb || rgb.some(Number.isNaN)) return 0.5
-  return (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255
+  if (/^currentcolor$/i.test(color)) return 0
+  const rgb = channels(color)
+  return rgb ? (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255 : 0.5
 }
 
 const round = (n: number) => Math.round(n * 1000) / 1000
 
-/** How strongly a fill shows: the darker the colour in the file, the stronger the tint. */
-const tint = (paint: Paint) => round(Math.max(0.12, 1 - lightness(paint.fill)) * paint.fillOpacity * paint.opacity)
+/** The colour's red, green and blue (0..255), or null when it cannot be read. */
+function channels(color: string): number[] | null {
+  const value = NAMED[color.toLowerCase()] ?? color
+  const hex = value.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i)?.[1]
+  if (hex) return (hex.length === 3 ? [...hex].map((c) => c + c) : hex.match(/../g)!).map((h) => Number.parseInt(h, 16))
+  const fn = value.match(/^rgba?\(([^)]+)\)$/i)?.[1]
+  const rgb = fn?.split(/[\s,/]+/).slice(0, 3).map((part) => Number.parseFloat(part))
+  return rgb && !rgb.some(Number.isNaN) ? rgb : null
+}
+
+/** Any clear colour (not black, white or grey) marks the drawing's second colour, its accent. */
+function isAccent(color: string): boolean {
+  const rgb = channels(color)
+  return Boolean(rgb && (Math.max(...rgb) - Math.min(...rgb)) / 255 > 0.25)
+}
+
+/**
+ * How strongly a fill shows. Greys: the darker, the stronger. Accent colours: full strength when
+ * vivid, weaker when pale (an orange is solid, a peach is a light wash).
+ */
+function tint(paint: Paint): number {
+  let strength = 1 - lightness(paint.fill)
+  if (isAccent(paint.fill)) {
+    const rgb = channels(paint.fill)!
+    const light = (Math.max(...rgb) + Math.min(...rgb)) / 2 / 255
+    strength = 1 - Math.max(0, light - 0.5) * 2
+  }
+  return round(Math.max(0.12, strength) * paint.fillOpacity * paint.opacity)
+}
 
 function lengthOf(tag: string, a: Map<string, string>): number {
   const n = (name: string) => Number.parseFloat(a.get(name) ?? '0') || 0
@@ -156,10 +177,14 @@ function compileNode(node: Element, paint: Paint, file: string, fail: Fail): Art
 
   const geometry = Object.fromEntries(GEOMETRY.filter((name) => attrs.has(name)).map((name) => [name, attrs.get(name)!]))
   const out: ArtNode = { tag, attrs: { ...geometry, ...placed, ...own.line } }
-  if (own.fill !== 'none' && tag !== 'line') out.fill = tint(own)
+  if (own.fill !== 'none' && tag !== 'line') {
+    out.fill = tint(own)
+    if (isAccent(own.fill)) out.accentFill = true
+  }
   if (own.stroke !== 'none') {
     out.stroke = round(own.strokeOpacity * own.opacity)
     out.length = round(lengthOf(tag, attrs))
+    if (isAccent(own.stroke)) out.accentStroke = true
   }
   return out.fill === undefined && out.stroke === undefined ? [] : [out]
 }

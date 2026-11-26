@@ -16,6 +16,9 @@ export interface ArtNode {
   fill?: number
   stroke?: number
   length?: number
+  /** Painted in the element's accent colour rather than its main one. */
+  accentFill?: true
+  accentStroke?: true
   children?: ArtNode[]
 }
 

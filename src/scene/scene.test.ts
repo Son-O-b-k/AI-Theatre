@@ -308,7 +308,7 @@ describe('richer elements', () => {
       { op: 'board' },
       { op: 'el', id: 'c', kind: 'graph', data: [{ label: 'A', value: 1 }], label: 'Chart' },
       { op: 'el', id: 'i', kind: 'illustration', art: 'rocket', label: 'Rocket' },
-      { op: 'el', id: 'j', kind: 'drawing', art: 'database', label: 'Data' },
+      { op: 'el', id: 'j', kind: 'drawing', art: 'magnet', label: 'Magnet' },
       { op: 'el', id: 'k', kind: 'image', art: 'unicorn', label: 'Unicorn' },
       { op: 'beat', say: 'Look.', do: [] },
     ])

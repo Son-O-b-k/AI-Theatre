@@ -5,7 +5,7 @@ import { Trash2, X } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { KIND_NAMES, nameOf, onBoard, removeElement, setBoardTitle, updateElement } from '../../scene/edit'
 import { ICON_NAMES, ILLUSTRATION_NAMES } from '../../scene/library'
-import { PALETTE } from '../../scene/palette'
+import { accentFor, PALETTE } from '../../scene/palette'
 import type { Element, Scene } from '../../scene/schema'
 import { Button } from '../ui/Button'
 import { cx } from '../ui/cx'
@@ -91,6 +91,7 @@ function Fields({ scene, el, set }: { scene: Scene; el: Element; set(fields: Rec
         <>
           {label}
           <Choice label="Icon" value={el.icon ?? ''} options={['', ...ICON_NAMES]} none="No icon" onPick={(icon) => set({ icon: icon || undefined })} />
+          <MarkChoice value={el.mark} set={set} />
         </>
       )
     case 'icon':
@@ -98,6 +99,7 @@ function Fields({ scene, el, set }: { scene: Scene; el: Element; set(fields: Rec
         <>
           {label}
           <Choice label="Icon" value={el.icon} options={ICON_NAMES} onPick={(icon) => set({ icon })} />
+          <MarkChoice value={el.mark} set={set} />
         </>
       )
     case 'illustration':
@@ -105,6 +107,8 @@ function Fields({ scene, el, set }: { scene: Scene; el: Element; set(fields: Rec
         <>
           {label}
           <Choice label="Drawing" value={el.art} options={ILLUSTRATION_NAMES} onPick={(art) => set({ art })} />
+          <Colours label="Second colour" value={el.accent ?? accentFor(el.color)} onPick={(accent) => set({ accent })} />
+          <MarkChoice value={el.mark} set={set} />
         </>
       )
     case 'text':
@@ -166,6 +170,13 @@ function Fields({ scene, el, set }: { scene: Scene; el: Element; set(fields: Rec
       return (
         <>
           {label}
+          <Choice
+            label="Frame"
+            value={el.style ?? 'zone'}
+            options={['zone', 'window']}
+            labels={{ zone: 'Dashed area', window: 'Window with a title bar' }}
+            onPick={(style) => set({ style })}
+          />
           <fieldset>
             <legend className="mb-1 text-xs text-dim">Inside the frame</legend>
             {shapes.map((shape) => (
@@ -191,6 +202,9 @@ function Fields({ scene, el, set }: { scene: Scene; el: Element; set(fields: Rec
           </label>
           <label className="flex items-center gap-2 text-[13px]">
             <input type="checkbox" checked={el.arrow} onChange={(e) => set({ arrow: e.target.checked })} /> Arrowhead
+          </label>
+          <label className="flex items-center gap-2 text-[13px]">
+            <input type="checkbox" checked={Boolean(el.blocked)} onChange={(e) => set({ blocked: e.target.checked || undefined })} /> Blocked (a ✗ on it)
           </label>
         </>
       )
@@ -252,14 +266,20 @@ function TextField(props: { label: string; value: string; placeholder?: string; 
   )
 }
 
-function Choice(props: { label: string; value: string; options: string[]; none?: string; onPick(value: string): void }) {
+const MARK_LABELS: Record<string, string> = { '': 'No badge', ok: '✓ Works / done', no: '✗ Fails / blocked', ask: '? Question', warn: '! Warning' }
+
+function MarkChoice({ value, set }: { value?: string; set(fields: Record<string, unknown>): void }) {
+  return <Choice label="Badge" value={value ?? ''} options={Object.keys(MARK_LABELS)} labels={MARK_LABELS} onPick={(mark) => set({ mark: mark || undefined })} />
+}
+
+function Choice(props: { label: string; value: string; options: string[]; none?: string; labels?: Record<string, string>; onPick(value: string): void }) {
   return (
     <label className="block">
       <span className="mb-1 block text-xs text-dim">{props.label}</span>
       <select value={props.value} onChange={(e) => props.onPick(e.target.value)} className={INPUT}>
         {props.options.map((option) => (
           <option key={option} value={option}>
-            {option ? option.replace(/-/g, ' ') : props.none}
+            {props.labels?.[option] ?? (option ? option.replace(/-/g, ' ') : props.none)}
           </option>
         ))}
       </select>
@@ -267,10 +287,10 @@ function Choice(props: { label: string; value: string; options: string[]; none?:
   )
 }
 
-function Colours({ value, onPick }: { value: string; onPick(color: string): void }) {
+function Colours({ label = 'Colour', value, onPick }: { label?: string; value: string; onPick(color: string): void }) {
   return (
     <div>
-      <span className="mb-1 block text-xs text-dim">Colour</span>
+      <span className="mb-1 block text-xs text-dim">{label}</span>
       <div className="flex flex-wrap gap-1.5">
         {(Object.entries(PALETTE) as [string, string][]).map(([name, hex]) => (
           <button

@@ -5,7 +5,7 @@
 import type { Brand } from '../../shared/protocol'
 import { hexToRgba, rgbaToHex, type Rgba } from './color'
 import type { Resolved } from './compile'
-import { PALETTE, THEME } from './palette'
+import { accentFor, PALETTE, THEME } from './palette'
 import type { TheatreState } from './theatre'
 
 /** Light stages get dark text; dark stages keep the default light text. */
@@ -34,7 +34,9 @@ export function brandResolved(resolved: Resolved, brand: Brand | null | undefine
     background: brand.background,
     ink: inkFor(brand.background),
     logo: brand.logo,
-    elements: resolved.elements.map((el) => ({ ...el, color: swap(el.color) })),
+    elements: resolved.elements.map((el) =>
+      el.kind === 'illustration' ? { ...el, color: swap(el.color), accent: swap(el.accent ?? accentFor(el.color)) } : { ...el, color: swap(el.color) },
+    ),
     keys: resolved.keys.map((key) => (key.prop === 'color' && typeof key.v === 'string' ? { ...key, v: swap(key.v) } : key)),
   }
 }

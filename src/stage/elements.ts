@@ -3,10 +3,11 @@
 // animates it. Elements that draw themselves in return a `draw` function taking progress 0..1.
 
 import { hexToRgba } from '../scene/color'
-import { hasShapeLabel, innerIcon, LABEL_SIZE, labelOffset, labelPosition, PIN_RADIUS } from '../scene/geometry'
+import { hasShapeLabel, innerIcon, LABEL_SIZE, labelOffset, labelPosition, PIN_RADIUS, shapeExtent } from '../scene/geometry'
 import { photoSize } from '../scene/images'
 import { ICON_GRID, ICONS, ILLUSTRATIONS, type ArtNode } from '../scene/library'
-import type { ElementOf, SceneElement } from '../scene/schema'
+import { accentFor, PALETTE } from '../scene/palette'
+import type { ElementOf, MARKS, SceneElement } from '../scene/schema'
 import { lineHeight, textWidth, wrapText } from '../scene/text'
 import { artSize, chartLayout, CHART, counterText, TABLE, tableLayout, TIMELINE, timelineLayout } from '../scene/widgets'
 import { pathLength, reveal, roundedRect, seedOf, sketchCircle, sketchLine, sketchOutline } from './sketch'
@@ -89,11 +90,39 @@ export function buildShape(el: SceneElement, ink: Ink): Part {
       break
   }
 
+  if ('mark' in el && el.mark) {
+    // On the corner of a card; for round and free-standing shapes, nearer their middle.
+    const extent = shapeExtent(el)!
+    const inset = el.kind === 'box' ? 6 : el.kind === 'circle' ? el.r * 0.3 : extent.hw * 0.15
+    root.append(markBadge(el.mark, extent.hw - inset, -extent.hh + inset))
+  }
+
   if (hasShapeLabel(el)) {
     part.label = labelText(el.label!, labelOffset(el), labelPosition(el) === 'inside', ink)
     root.append(part.label)
   }
   return part
+}
+
+export type Mark = (typeof MARKS)[number]
+
+export const MARK_RADIUS = 15
+const MARK_LOOK: Record<Mark, { color: string; d: string }> = {
+  ok: { color: PALETTE.green, d: 'M -6 0.5 L -2 4.5 L 6 -4.5' },
+  no: { color: PALETTE.red, d: 'M -4.5 -4.5 L 4.5 4.5 M 4.5 -4.5 L -4.5 4.5' },
+  ask: { color: PALETTE.amber, d: 'M -4 -3.5 C -4 -8 4 -8 4 -3.5 C 4 -0.5 0 -0.5 0 2.5 M 0 7 L 0 7.2' },
+  warn: { color: PALETTE.orange, d: 'M 0 -6 L 0 2 M 0 6.5 L 0 6.7' },
+}
+
+/** A round status badge (✓ ✗ ? !) in its own fixed colour, ringed in the board colour to stand clear. */
+export function markBadge(mark: Mark, x: number, y: number): SVGGElement {
+  const look = MARK_LOOK[mark]
+  const badge = create('g', { transform: `translate(${x} ${y})`, 'data-mark': mark })
+  badge.append(
+    create('circle', { r: MARK_RADIUS, fill: look.color, style: 'stroke: var(--stage-bg)', 'stroke-width': 3.5 }),
+    create('path', { d: look.d, fill: 'none', style: 'stroke: var(--stage-bg)', 'stroke-width': 3.2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }),
+  )
+  return badge
 }
 
 export function labelText(text: string, y: number, inside: boolean, ink: Ink, size = LABEL_SIZE): SVGTextElement {
@@ -135,6 +164,8 @@ function illustration(root: SVGGElement, el: ElementOf<'illustration'>): Part['d
     return undefined
   }
   const frame = create('g', { transform: `translate(${-w / 2} ${-h / 2}) scale(${w / art.width})`, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
+  // Details drawn in a clear colour in the file take the second colour; the rest takes the element's.
+  const accent = el.accent ?? accentFor(el.color)
   const washes: SVGElement[] = []
   const strokes: { node: SVGElement; length: number; start: number }[] = []
   let total = 0
@@ -150,12 +181,12 @@ function illustration(root: SVGGElement, el: ElementOf<'illustration'>): Part['d
       }
       if (node.fill !== undefined) {
         const base = create(tag, { ...node.attrs, style: 'fill: var(--stage-bg)', stroke: 'none' })
-        const tint = create(tag, { ...node.attrs, fill: 'currentColor', 'fill-opacity': node.fill, stroke: 'none' })
+        const tint = create(tag, { ...node.attrs, fill: node.accentFill ? accent : 'currentColor', 'fill-opacity': node.fill, stroke: 'none' })
         parent.append(base, tint)
         washes.push(base, tint)
       }
       if (node.stroke !== undefined) {
-        const line = create(tag, { ...node.attrs, fill: 'none', stroke: 'currentColor', 'stroke-opacity': node.stroke })
+        const line = create(tag, { ...node.attrs, fill: 'none', stroke: node.accentStroke ? accent : 'currentColor', 'stroke-opacity': node.stroke })
         parent.append(line)
         // Lines that are dashed in the drawing keep their dashes and wash in with the fills.
         if (node.attrs['stroke-dasharray'] !== undefined || !node.length) washes.push(line)

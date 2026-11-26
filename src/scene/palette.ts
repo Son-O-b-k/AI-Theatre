@@ -26,6 +26,15 @@ export const THEME = {
   accent: PALETTE.blue,
 } as const
 
+/**
+ * A drawing's second colour when the lesson does not choose one: amber details on cool or neutral
+ * lines, blue on warm ones. (A workspace brand turns these into its highlight and primary colours.)
+ */
+export function accentFor(color: string): string {
+  const warm: string[] = [PALETTE.amber, PALETTE.orange, PALETTE.red, PALETTE.lime, PALETTE.pink]
+  return warm.includes(color.toLowerCase()) ? PALETTE.blue : PALETTE.amber
+}
+
 /** Common colour words models use that are not in the palette, mapped to the closest one. */
 const ALIASES: Record<string, ColorName> = {
   yellow: 'amber',

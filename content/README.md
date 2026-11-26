@@ -70,6 +70,11 @@ those colours. So drawings are **recoloured**:
 - Every line takes the element's colour (white, blue, amber...), like coloured chalk.
 - Filled areas become tints of that colour: the darker the fill in your file, the stronger the
   tint. White is a faint wash, mid grey is half strength, black is solid.
+- Anything drawn in a **clear colour** (orange, red, blue... anything that is not black, white or
+  grey) takes the drawing's **second colour** instead: amber details on cool lines, blue on warm
+  ones, or whatever the lesson picks. Use it for the details that make the thing recognisable: a
+  phone's screen bar, a router's lights, a database's lid. A vivid colour is solid; a pale one
+  (peach) is a light wash.
 - Each filled shape hides what is drawn behind it, as on paper.
 
 When the drawing appears, its lines are drawn one after another in the order they are in the file,
@@ -80,7 +85,7 @@ Practical guidance:
 
 - Use a square canvas of about **200 × 200** (`viewBox="0 0 200 200"`), lines **3 to 5** wide,
   round line ends and joins.
-- Draw with black lines and grey fills. Avoid colours: they become tints anyway.
+- Draw with black lines and grey fills, and one clear colour (e.g. `#f80`) for the details.
 - Keep it simple: a few dozen shapes. The drawing is shown about 230 pixels tall.
 - Use paths and basic shapes only. Convert text to outlines and expand symbols before exporting.
   Images, text, gradients and effects are not supported and are reported by the check.

@@ -51,6 +51,22 @@ const icon = z
   .transform((name) => (name in ICONS ? name : undefined))
   .optional()
 
+/** A small badge on a shape's corner: done/working, failed/blocked, a question, a warning. */
+export const MARKS = ['ok', 'no', 'ask', 'warn'] as const
+const MARK_ALIASES: Record<string, (typeof MARKS)[number]> = {
+  check: 'ok', tick: 'ok', yes: 'ok', up: 'ok', done: 'ok', success: 'ok',
+  x: 'no', cross: 'no', fail: 'no', error: 'no', down: 'no', blocked: 'no',
+  question: 'ask', unknown: 'ask', '?': 'ask',
+  warning: 'warn', alert: 'warn', '!': 'warn',
+}
+const mark = z
+  .unknown()
+  .transform((value) => {
+    const name = String(value ?? '').trim().toLowerCase()
+    return (MARKS as readonly string[]).includes(name) ? (name as (typeof MARKS)[number]) : MARK_ALIASES[name]
+  })
+  .optional()
+
 const ids = z.union([z.string(), z.array(z.string()).min(1)]).transform((value) => (Array.isArray(value) ? value : [value]))
 
 const common = {
@@ -68,9 +84,9 @@ const bar = z.union([
 const moment = z.object({ at: z.coerce.string(), label: z.coerce.string().default('') })
 
 export const ElementSchema = z.discriminatedUnion('kind', [
-  z.object({ ...common, kind: z.literal('box'), w: z.number().min(60).max(400).default(170), h: z.number().min(40).max(300).default(110), icon }),
-  z.object({ ...common, kind: z.literal('circle'), r: z.number().min(20).max(150).default(55), icon }),
-  z.object({ ...common, kind: z.literal('icon'), icon: z.string().refine((n) => n in ICONS, 'unknown icon'), size: z.number().min(24).max(200).default(72) }),
+  z.object({ ...common, kind: z.literal('box'), w: z.number().min(60).max(400).default(170), h: z.number().min(40).max(300).default(110), icon, mark }),
+  z.object({ ...common, kind: z.literal('circle'), r: z.number().min(20).max(150).default(55), icon, mark }),
+  z.object({ ...common, kind: z.literal('icon'), icon: z.string().refine((n) => n in ICONS, 'unknown icon'), size: z.number().min(24).max(200).default(72), mark }),
   z.object({ ...common, kind: z.literal('dot'), r: z.number().min(4).max(30).default(10) }),
   z.object({
     ...common,
@@ -82,8 +98,15 @@ export const ElementSchema = z.discriminatedUnion('kind', [
     /** Notes are handwritten; board titles are set in the sans-serif. */
     font: z.enum(['hand', 'sans']).optional(),
   }),
-  /** A drawing from content/illustrations; `size` is its longer side. */
-  z.object({ ...common, kind: z.literal('illustration'), art: z.string().refine((n) => n in ILLUSTRATIONS, 'unknown illustration'), size: z.number().min(80).max(420).default(230) }),
+  /** A drawing from content/illustrations; `size` is its longer side. `accent` colours its details. */
+  z.object({
+    ...common,
+    kind: z.literal('illustration'),
+    art: z.string().refine((n) => n in ILLUSTRATIONS, 'unknown illustration'),
+    size: z.number().min(80).max(420).default(230),
+    accent: color.optional(),
+    mark,
+  }),
   /** A bar chart whose bars grow in, with real numbers. */
   z.object({ ...common, kind: z.literal('chart'), bars: z.array(bar).min(1).max(12), unit: z.string().max(12).optional() }),
   /** A number that counts from `from` to `to` as it appears. */
@@ -106,8 +129,16 @@ export const ElementSchema = z.discriminatedUnion('kind', [
     columns: z.array(z.coerce.string()).min(1).max(5),
     rows: z.array(z.array(z.coerce.string())).min(1).max(7),
   }),
-  /** A labelled frame around other shapes on the board ("Before" / "After", "Inside the cell"). */
-  z.object({ ...common, kind: z.literal('group'), contains: ids.pipe(z.array(z.string()).max(8)) }),
+  /**
+   * A labelled frame around other shapes on the board: a dashed zone ("Your home network",
+   * "Before" / "After"), or a window with a title bar (a computer, an app, a server).
+   */
+  z.object({
+    ...common,
+    kind: z.literal('group'),
+    contains: ids.pipe(z.array(z.string()).max(8)),
+    style: z.enum(['zone', 'window']).optional().catch(undefined),
+  }),
   /**
    * One of the creator's pictures (src/scene/images.ts). The AI names it by `image` ("img1"); the
    * rest is filled in from the picture itself, so the stage, viewer and exports need nothing else.
@@ -138,6 +169,8 @@ export const LinkSchema = z.object({
   color: color.optional(),
   dashed: z.boolean().default(false),
   arrow: z.boolean().default(true),
+  /** A connection that does not get through: a ✗ on its middle. */
+  blocked: z.boolean().optional(),
 })
 
 type ElementInput = z.infer<typeof ElementSchema> | ({ kind: 'link' } & z.infer<typeof LinkSchema>)
@@ -268,9 +301,11 @@ export function parseOp(raw: unknown): SceneOp {
     case 'icon':
     case 'text': {
       // Models use the kind as the op, invent kinds, and declare links as elements.
-      const kind = normalizeKind(op === 'el' ? rest.kind : op, rest)
+      const written = op === 'el' ? rest.kind : op
+      const kind = normalizeKind(written, rest)
       if (kind === 'link') return { op: 'link', link: LinkSchema.parse(rest) }
-      return { op: 'el', element: ElementSchema.parse(normalizeFields(kind, rest)) }
+      const fields = String(written).toLowerCase() === 'window' && !rest.style ? { ...rest, style: 'window' } : rest
+      return { op: 'el', element: ElementSchema.parse(normalizeFields(kind, fields)) }
     }
     case 'link':
       return { op, link: LinkSchema.parse(rest) }
@@ -313,6 +348,8 @@ const KIND_ALIASES: Record<string, string> = {
   matrix: 'table',
   grid: 'table',
   container: 'group',
+  window: 'group',
+  zone: 'group',
   frame: 'group',
   area: 'group',
   region: 'group',
@@ -350,7 +387,7 @@ function normalizeFields(kind: string, fields: Record<string, unknown>): Record<
   switch (kind) {
     case 'illustration': {
       const art = String(pick('art', 'name', 'src', 'icon') ?? '')
-      if (art in ILLUSTRATIONS) return { ...fields, kind, art }
+      if (art in ILLUSTRATIONS) return { ...fields, kind, art, mark: pick('mark', 'status', 'badge') }
       const label = fields.label ?? art.replace(/[-_]+/g, ' ')
       return art in ICONS ? { ...fields, kind: 'icon', icon: art, label, size: 96 } : { ...fields, kind: 'box', label }
     }
@@ -363,7 +400,7 @@ function normalizeFields(kind: string, fields: Record<string, unknown>): Record<
     case 'group':
       return { ...fields, kind, contains: pick('contains', 'members', 'children', 'items', 'ids') }
     default:
-      return { ...fields, kind }
+      return { ...fields, kind, mark: pick('mark', 'status', 'badge') }
   }
 }
 

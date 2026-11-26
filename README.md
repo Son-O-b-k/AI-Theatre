@@ -67,7 +67,7 @@ prompt ─▶ server/lessons/jobs.ts  a job on the server, metered, streamed to 
 - **Storyboard format** (`src/scene/schema.ts`). The AI never positions or times anything. It writes:
   - **boards** (screens) with a title and a layout: `row`, `column`, `grid`, `flow` (along the links) or `cycle`
   - **elements**: `box`, `circle`, `icon` (about 100 curated [Lucide](https://lucide.dev) icons), handwritten `text` notes, and `link` arrows
-  - **teaching elements**: `illustration` (a drawing from the content library that sketches itself in), `chart` (bars grow in with real numbers), `counter` (counts up to a value), `timeline` (dated moments revealed left to right), `table` (revealed row by row) and `group` (a labelled frame around shapes; two side by side compare before and after)
+  - **teaching elements**: `illustration` (a two-colour drawing from the content library that sketches itself in), `chart` (bars grow in with real numbers), `counter` (counts up to a value), `timeline` (dated moments revealed left to right), `table` (revealed row by row) and `group` (a labelled frame around shapes: a dashed zone, or a window with a title bar; two side by side compare before and after). Shapes can carry a status badge (`mark`: ✓ ✗ ? !) and a link can be `blocked` (a ✗ on it)
   - **the creator's pictures**: `photo` (a picture given with the request, as a photo or a sketch), `pin` (a label on a named place in a photo) and the `zoom` action (moves in on a place, or back out); `src/scene/images.ts` fills in what the AI cannot know
   - **beats**: one or two spoken sentences, plus actions that happen while they are said (`show`, `hide`, `focus`, `highlight`, `pulse`, `travel`)
 

@@ -85,7 +85,8 @@ export function updateElement(scene: Scene, id: string, fields: Record<string, u
   const parsed = el.kind === 'link' ? LinkSchema.safeParse(input) : ElementSchema.safeParse(input)
   if (!parsed.success) throw new Error(describeError(parsed.error))
   const color = toHex(parsed.data.color ?? el.color)
-  const next = (el.kind === 'link' ? { ...parsed.data, kind: 'link', color, boards } : fitLabel({ ...parsed.data, color, boards } as Element)) as Element
+  const accent = 'accent' in parsed.data && parsed.data.accent ? { accent: toHex(parsed.data.accent) } : {}
+  const next = (el.kind === 'link' ? { ...parsed.data, kind: 'link', color, boards } : fitLabel({ ...parsed.data, ...accent, color, boards } as Element)) as Element
   return { ...scene, elements: scene.elements.map((other) => (other.id === id ? next : other)) }
 }
 

@@ -9,7 +9,7 @@ import { bounds, LINK_LABEL_SIZE, linkGeometry, type Placed, type Point, type Re
 import { THEME } from '../scene/palette'
 import { ANIMATED_PROPS, STAGES, type ElementOf, type SceneElement, type Visual } from '../scene/schema'
 import { GROUP } from '../scene/widgets'
-import { buildShape, labelText, type Ink } from './elements'
+import { buildShape, labelText, markBadge, type Ink } from './elements'
 import { pathLength, reveal, roundedRect, seedOf, sketchLine } from './sketch'
 import { create, setAttributes, SVG_NS, tree, type Tree } from './svg'
 
@@ -49,6 +49,11 @@ interface StageNode {
   box?: Rect
   /** A wide invisible line over a link, so it is easy to click in the editor. */
   hit?: SVGPathElement
+  /** A blocked link's ✗. */
+  badge?: SVGGElement
+  /** A window frame's title bar and its three dots. */
+  bar?: SVGPathElement
+  dots?: SVGGElement
 }
 
 export class SvgStage {
@@ -196,14 +201,14 @@ export class SvgStage {
       node.box = { x0: Math.min(...points.map((p) => p.x)), y0: Math.min(...points.map((p) => p.y)), x1: Math.max(...points.map((p) => p.x)), y1: Math.max(...points.map((p) => p.y)) }
       if (el.id === this.selected) this.drawSelection()
       if (node.head) placeHead(node.head, geometry.at(0.97), geometry.at(1))
-      if (node.label) {
-        const mid = geometry.at(0.5)
-        setAttributes(node.label, { x: mid.x, y: mid.y - LINK_LABEL_SIZE })
-      }
+      const mid = geometry.at(0.5)
+      if (node.label) setAttributes(node.label, { x: mid.x, y: mid.y - LINK_LABEL_SIZE })
+      node.badge?.setAttribute('transform', `translate(${mid.x} ${mid.y})`)
     }
     const draw = node.visual.draw
     if (!el.dashed) reveal(node.stroke, node.length!, draw)
     node.head?.setAttribute('visibility', draw > 0.98 ? 'visible' : 'hidden')
+    node.badge?.setAttribute('visibility', draw > 0.98 ? 'visible' : 'hidden')
   }
 
   /** A frame around the group's members, wherever they are, with the label in a band at the top. */
@@ -227,7 +232,17 @@ export class SvgStage {
     if (el.id === this.selected) this.drawSelection()
     node.stroke.setAttribute('d', sketchLine(outline, seedOf(el.id)))
     ;(node.root.firstChild as SVGPathElement).setAttribute('d', outline)
-    if (node.label) setAttributes(node.label, { x: frame.x0 + 22 * scale, y: frame.y0 + (GROUP.label * scale) / 2 + 8 * scale, 'font-size': GROUP.text * scale })
+    if (el.style === 'window') {
+      // A title bar across the top, the title in its middle and three dots at its right.
+      const band = GROUP.label * scale + 8 * scale
+      const r = 22 * scale
+      const { x0, y0, x1 } = frame
+      node.bar?.setAttribute('d', `M ${x0} ${y0 + band} V ${y0 + r} Q ${x0} ${y0} ${x0 + r} ${y0} H ${x1 - r} Q ${x1} ${y0} ${x1} ${y0 + r} V ${y0 + band} Z`)
+      node.dots?.setAttribute('transform', `translate(${x1 - 26 * scale} ${y0 + band / 2}) scale(${scale})`)
+      if (node.label) setAttributes(node.label, { x: (x0 + x1) / 2, y: y0 + band / 2, 'font-size': GROUP.text * 0.8 * scale })
+    } else if (node.label) {
+      setAttributes(node.label, { x: frame.x0 + 22 * scale, y: frame.y0 + (GROUP.label * scale) / 2 + 8 * scale, 'font-size': GROUP.text * scale })
+    }
   }
 
   private remove(id: string, node: StageNode): void {
@@ -259,18 +274,40 @@ function build(el: SceneElement, signature: string, ink: Ink): StageNode {
       node.label = labelText(el.label, 0, false, ink, LINK_LABEL_SIZE)
       root.append(node.label)
     }
+    if (el.blocked) {
+      node.badge = markBadge('no', 0, 0)
+      root.append(node.badge)
+    }
     return node
   }
 
   if (el.kind === 'group') {
     const root = create('g')
     const node: StageNode = { el, signature, root }
-    root.append(create('path', { fill: 'currentColor', 'fill-opacity': 0.06 }))
-    node.stroke = create('path', { fill: 'none', stroke: 'currentColor', 'stroke-width': 2, 'stroke-dasharray': '12 8', 'stroke-linecap': 'round' })
+    const titled = el.style === 'window'
+    root.append(create('path', { fill: 'currentColor', 'fill-opacity': titled ? 0.05 : 0.06 }))
+    if (titled) {
+      node.bar = create('path', { fill: 'currentColor', 'fill-opacity': 0.16 })
+      node.dots = create('g', { fill: 'currentColor' })
+      for (const x of [-32, -16, 0]) node.dots.append(create('circle', { cx: x, r: 4.5, 'fill-opacity': x === 0 ? 0.9 : 0.45 }))
+      root.append(node.bar, node.dots)
+    }
+    node.stroke = create('path', {
+      fill: 'none',
+      stroke: 'currentColor',
+      'stroke-width': titled ? 2.5 : 2,
+      'stroke-linecap': 'round',
+      ...(!titled && { 'stroke-dasharray': '12 8' }),
+    })
     root.append(node.stroke)
     if (el.label) {
-      node.label = create('text', { 'font-weight': 700, 'dominant-baseline': 'central', fill: 'currentColor' })
-      node.label.textContent = el.label
+      node.label = create('text', {
+        'font-weight': 700,
+        'dominant-baseline': 'central',
+        fill: 'currentColor',
+        ...(titled && { 'text-anchor': 'middle', 'letter-spacing': '0.12em' }),
+      })
+      node.label.textContent = titled ? el.label.toUpperCase() : el.label
       root.append(node.label)
     }
     return node

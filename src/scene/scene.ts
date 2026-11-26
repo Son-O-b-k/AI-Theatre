@@ -66,7 +66,8 @@ export function applyOp(scene: Scene, op: SceneOp, warn: Warn): Scene {
       const color = toHex(element.color ?? DEFAULT_COLOR[element.kind])
       // A pin is drawn on its photo, so the photo comes onto the board with it.
       if (element.kind === 'pin') s = carry(s, element.on, board)
-      return upsert(s, fitLabel({ ...element, color, boards } as Element))
+      const accent = element.kind === 'illustration' && element.accent ? { accent: toHex(element.accent) } : {}
+      return upsert(s, fitLabel({ ...element, ...accent, color, boards } as Element))
     }
 
     case 'link': {

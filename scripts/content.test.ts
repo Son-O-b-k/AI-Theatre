@@ -53,6 +53,23 @@ describe('content check', () => {
     assert.equal(line.length, 50)
   })
 
+  test('details drawn in a clear colour become the second colour; greys stay the main one', () => {
+    const { library, errors } = folder({}, {
+      lamp: SVG(`
+        <rect x="0" y="0" width="50" height="50" fill="#ccc"/>
+        <circle cx="25" cy="25" r="10" fill="#f80" stroke="none"/>
+        <circle cx="25" cy="25" r="5" fill="#fc8" stroke="#2563eb"/>`),
+    })
+    assert.deepEqual(errors, [])
+    const [card, vivid, pale] = library.illustrations.lamp.nodes
+    assert.equal(card.accentFill, undefined)
+    assert.equal(card.accentStroke, undefined)
+    assert.deepEqual([vivid.accentFill, vivid.fill], [true, 1])
+    assert.equal(pale.accentFill, true)
+    assert.ok(pale.fill! > 0.3 && pale.fill! < 0.6, `a pale accent is a light wash, not ${pale.fill}`)
+    assert.equal(pale.accentStroke, true)
+  })
+
   test('nothing unsafe gets through: scripts, links and handlers', () => {
     const { library, errors } = folder({}, {
       sneaky: SVG(`<script>alert(1)</script><a href="https://example.com"><path d="M0 0L10 10"/></a>
