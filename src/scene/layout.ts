@@ -49,7 +49,8 @@ export function layoutBoard(board: Board, elements: Element[], stage: StageFrame
   const placements = new Map<string, Placement>()
   const { safe } = stage
   const region: Rect = { x0: safe.x0, x1: safe.x1, y0: board.title ? safe.y0 : 60, y1: safe.y1 }
-  const shapes = elements.filter((el) => el.kind !== 'link' && el.kind !== 'dot' && el.kind !== 'text' && el.kind !== 'group')
+  const shapes = elements.filter((el) => el.kind !== 'link' && el.kind !== 'dot' && el.kind !== 'text' && el.kind !== 'group' && el.kind !== 'tabs')
+  const tabRows = elements.filter((el): el is ElementOf<'tabs'> => el.kind === 'tabs')
   const notes = elements.filter((el): el is ElementOf<'text'> => el.kind === 'text')
   const links = elements.filter((el): el is ElementOf<'link'> => el.kind === 'link')
 
@@ -75,7 +76,7 @@ export function layoutBoard(board: Board, elements: Element[], stage: StageFrame
   const connected = topLinks.some((link) => members.has(link.from) && members.has(link.to))
   const layout = board.layout === 'flow' && !connected ? 'row' : (board.layout ?? (connected ? 'flow' : 'row'))
 
-  const diagram = placeNotes(notes, region, top.length > 0, placements)
+  const diagram = placeTabs(tabRows, placeNotes(notes, region, top.length > 0, placements), placements)
   const placed = relations(top, topLinks, board.layout === 'tree' && connected, outer)
   if (top.length > 0 && placed.size > 0) placeRelative(top, placed, topLinks, layout, diagram, placements, blocks)
   else if (top.length > 0) placeShapes(top, topLinks, layout === 'tree' ? 'row' : layout, diagram, placements, blocks)
@@ -312,6 +313,18 @@ function placeRelative(
     const size = sizes.get(id)!
     placements.set(id, { x: centre.x + (at.x - size.cx) * scale, y: centre.y + (at.y - size.cy) * scale, scale, curve: 0 })
   }
+}
+
+/** Tabs go across the top, under the title, shrunk if wider than the stage; returns what is left. */
+function placeTabs(rows: ElementOf<'tabs'>[], region: Rect, placements: Map<string, Placement>): Rect {
+  let y = region.y0
+  for (const row of rows) {
+    const size = measure(row)
+    const scale = Math.min(1, (region.x1 - region.x0) / size.width)
+    placements.set(row.id, { x: (region.x0 + region.x1) / 2 - size.cx * scale, y: y + (size.height / 2 - size.cy) * scale, scale, curve: 0 })
+    y += size.height * scale + GAP.y
+  }
+  return { ...region, y0: y }
 }
 
 /** Stacks notes at the bottom of the region (or centred when they are all there is); returns what is left. */

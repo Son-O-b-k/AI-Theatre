@@ -191,7 +191,11 @@ const ACTIONS = {
   travel: 'Send a dot along',
   zoom: 'Zoom in on',
   unzoom: 'Zoom back out of',
+  fill: 'Fill',
+  tab: 'Move the tabs of',
 } as const
+
+const FILL_LEVELS = [0, 10, 25, 50, 75, 90, 100]
 
 /** "Show [The Brain] [Add]": what happens during a step, built from the things on its screen. */
 function AddAction({ scene, board, onAdd }: { scene: Scene; board: number; onAdd(action: Action): void }) {
@@ -199,9 +203,21 @@ function AddAction({ scene, board, onAdd }: { scene: Scene; board: number; onAdd
   const [type, setType] = useState<keyof typeof ACTIONS>('show')
   const [target, setTarget] = useState('')
   const [color, setColor] = useState<keyof typeof PALETTE>('amber')
+  const [amount, setAmount] = useState(100)
+  const [tab, setTab] = useState(1)
   // Zooming moves in on a pin of a picture, or back out of the picture.
   const things = onBoard(scene, board).filter((el) =>
-    type === 'travel' ? el.kind === 'link' : type === 'zoom' ? el.kind === 'pin' : type === 'unzoom' ? el.kind === 'photo' : true,
+    type === 'travel'
+      ? el.kind === 'link'
+      : type === 'zoom'
+        ? el.kind === 'pin'
+        : type === 'unzoom'
+          ? el.kind === 'photo'
+          : type === 'fill'
+            ? el.kind === 'illustration'
+            : type === 'tab'
+              ? el.kind === 'tabs'
+              : true,
   )
   const chosen = things.some((el) => el.id === target) ? target : (things[0]?.id ?? '')
 
@@ -225,7 +241,11 @@ function AddAction({ scene, board, onAdd }: { scene: Scene; board: number; onAdd
             ? { type, ids: [pin?.kind === 'pin' ? pin.on : chosen], spot: chosen, scale: undefined }
             : type === 'unzoom'
               ? { type: 'zoom', ids: [chosen], spot: undefined, scale: undefined }
-              : { type, ids: [chosen], fx: undefined },
+              : type === 'fill'
+                ? { type, ids: [chosen], to: amount / 100 }
+                : type === 'tab'
+                  ? { type, ids: [chosen], to: tab }
+                  : { type, ids: [chosen], fx: undefined },
     )
     setOpen(false)
   }
@@ -243,7 +263,17 @@ function AddAction({ scene, board, onAdd }: { scene: Scene; board: number; onAdd
       <select value={chosen} onChange={(e) => setTarget(e.target.value)} className={cx(select, 'flex-1')}>
         {things.length === 0 && (
           <option value="">
-            {type === 'travel' ? 'No arrows on this screen' : type === 'zoom' ? 'No pins on this screen' : type === 'unzoom' ? 'No pictures on this screen' : 'Nothing on this screen'}
+            {type === 'travel'
+              ? 'No arrows on this screen'
+              : type === 'zoom'
+                ? 'No pins on this screen'
+                : type === 'unzoom'
+                  ? 'No pictures on this screen'
+                  : type === 'fill'
+                    ? 'No drawings on this screen'
+                    : type === 'tab'
+                      ? 'No tabs on this screen'
+                      : 'Nothing on this screen'}
           </option>
         )}
         {things.map((el) => (
@@ -257,6 +287,27 @@ function AddAction({ scene, board, onAdd }: { scene: Scene; board: number; onAdd
           {Object.keys(PALETTE).map((name) => (
             <option key={name}>{name}</option>
           ))}
+        </select>
+      )}
+      {type === 'fill' && (
+        <select value={amount} onChange={(e) => setAmount(Number(e.target.value))} className={select} aria-label="How full">
+          {FILL_LEVELS.map((level) => (
+            <option key={level} value={level}>
+              to {level}%
+            </option>
+          ))}
+        </select>
+      )}
+      {type === 'tab' && (
+        <select value={tab} onChange={(e) => setTab(Number(e.target.value))} className={select} aria-label="Which tab">
+          {(() => {
+            const tabs = scene.elements.find((el) => el.id === chosen)
+            return (tabs?.kind === 'tabs' ? tabs.items : []).map((item, i) => (
+              <option key={item} value={i + 1}>
+                to {item}
+              </option>
+            ))
+          })()}
         </select>
       )}
       <Button size="sm" variant="primary" disabled={!chosen} onClick={add}>

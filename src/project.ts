@@ -1,6 +1,6 @@
 import { compile } from './scene/compile'
 import { finalizeScene } from './scene/scene'
-import { DEFAULT_FORMAT, SCENE_VERSION, type Format, type Scene } from './scene/schema'
+import { DEFAULT_FORMAT, SCENE_VERSION, type Format, type Look, type Scene } from './scene/schema'
 import { toTheatreState, type TheatreState } from './scene/theatre'
 
 export interface Turn {
@@ -30,6 +30,8 @@ export interface Project {
   language?: string
   /** The shape of its stage and video (src/scene/schema.ts); landscape when unset. */
   format?: Format
+  /** How its chapters are drawn (chalkboard or marker); chalkboard when unset. */
+  look?: Look
   outputs: Output[]
 }
 
@@ -53,6 +55,22 @@ export function reformatted(project: Project, format: Format): Project {
     ),
   }
 }
+
+/**
+ * The lesson drawn another way. Layout and timing do not change, so fine-tuned motion is kept; each
+ * chapter becomes a new revision so the player draws it again.
+ */
+export function restyled(project: Project, look: Look): Project {
+  return {
+    ...project,
+    look,
+    outputs: project.outputs.map((o) => ((o.scene.look ?? 'chalk') === look ? o : { ...o, revision: o.revision + 1, scene: { ...o.scene, look } })),
+  }
+}
+
+/** A chapter drawn the lesson's way, when it arrives from the AI. */
+export const inLessonLook = (project: Pick<Project, 'look'>, output: Output): Output =>
+  project.look && (output.scene.look ?? 'chalk') !== project.look ? { ...output, scene: { ...output.scene, look: project.look } } : output
 
 export const shortId = () => crypto.randomUUID().slice(0, 8)
 

@@ -112,3 +112,58 @@ export function tableLayout(el: ElementOf<'table'>): { columns: number[]; width:
 
 /** Space between a group's frame and the shapes inside, and the room its label takes at the top. */
 export const GROUP = { pad: 26, label: 42, text: 25 } as const
+
+// ── Tabs ────────────────────────────────────────────────────────────────────
+
+export const TABS = { text: 19, height: 46, pad: 22, gap: 14, dot: 5 } as const
+
+/** Which tab a value names: its number (from 1) or its name, loosely matched. */
+export function tabIndex(el: ElementOf<'tabs'>, to: number | string | undefined): number {
+  if (to === undefined) return 0
+  const count = el.items.length
+  const clamp = (n: number) => Math.max(0, Math.min(count - 1, n))
+  if (typeof to === 'number' || /^\d+$/.test(String(to).trim())) return clamp(Number(to) - 1)
+  const wanted = String(to).trim().toLowerCase()
+  const exact = el.items.findIndex((item) => item.toLowerCase() === wanted)
+  if (exact !== -1) return exact
+  const partly = el.items.findIndex((item) => item.toLowerCase().includes(wanted) || wanted.includes(item.toLowerCase()))
+  return partly === -1 ? 0 : partly
+}
+
+export function tabsLayout(el: ElementOf<'tabs'>): { widths: number[]; width: number; height: number } {
+  // Capitals, spaced out (0.08em a letter), then room for the dot at the right.
+  const widths = el.items.map((item) => Math.max(120, textWidth(item.toUpperCase(), TABS.text) * 1.1 + item.length * TABS.text * 0.08 + TABS.pad * 2 + TABS.dot * 2 + 16))
+  return { widths, width: widths.reduce((sum, w) => sum + w, 0) + TABS.gap * (widths.length - 1), height: TABS.height }
+}
+
+// ── Chain of steps ──────────────────────────────────────────────────────────
+
+export const CHAIN = { text: 24, arrow: 52, boxPad: 14, height: 56 } as const
+
+/** "[hash]" is shown boxed: the step that does the work. */
+export function chainParts(el: ElementOf<'chain'>): { text: string; boxed: boolean; width: number; x: number }[] {
+  const parts = el.parts.map((part) => {
+    const boxed = /^\[.*\]$/.test(part)
+    const text = boxed ? part.slice(1, -1).trim() : part
+    return { text, boxed, width: textWidth(text, CHAIN.text) + (boxed ? CHAIN.boxPad * 2 : 0) }
+  })
+  const width = parts.reduce((sum, part) => sum + part.width, 0) + CHAIN.arrow * (parts.length - 1)
+  let x = -width / 2
+  return parts.map((part) => {
+    const placed = { ...part, x: x + part.width / 2 }
+    x += part.width + CHAIN.arrow
+    return placed
+  })
+}
+
+export function chainExtent(el: ElementOf<'chain'>): { hw: number; hh: number } {
+  const parts = chainParts(el)
+  const last = parts[parts.length - 1]
+  return { hw: last.x + last.width / 2, hh: CHAIN.height / 2 }
+}
+
+// ── Chip ────────────────────────────────────────────────────────────────────
+
+export const CHIP = { text: 18, height: 34, pad: 14, gap: 10 } as const
+
+export const chipWidth = (text: string) => textWidth(text, CHIP.text) * 1.08 + CHIP.pad * 2

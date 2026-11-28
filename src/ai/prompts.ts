@@ -59,9 +59,13 @@ ELEMENTS (declare them on the current board before the beats that use them)
 - {"op":"el","id","kind":"timeline","points":[{"at":"1969","label":"Moon landing"}]} dated moments (2 to 8), revealed left to right.
 - {"op":"el","id","kind":"table","columns":["","Cat","Dog"],"rows":[["Legs","4","4"]]} a small table (up to 5 columns, 7 rows), revealed row by row.
 - {"op":"el","id","kind":"group","label":"Before","contains":["a","b"]} a labelled frame around shapes declared on this board. Showing, hiding or focusing the group does the same to the shapes inside. Two groups side by side compare before and after, or inside and outside. Optional "style":"window" draws it as a window with a title bar: a computer, a server, an app, with its parts inside.
+- {"op":"el","id","kind":"tabs","items":["Hash","Range","Directory"],"current":"Hash"} the options this part of the lesson compares, as tabs across the top of the board; one is lit. Move it with the "tab" action as the narration moves on to the next option. Keep the same tabs (same id) on every board about those options.
+- {"op":"el","id","kind":"chain","parts":["user id","[hash]","÷ 4","shard"],"label"} a short chain of steps read left to right with arrows between (2 to 6 parts); the part in [brackets] is boxed. Use it for a formula or a pipeline worked through in order.
 - {"op":"el","id","kind":"text","text"} a short handwritten note, definition or formula shown under the diagram (under ${noteWords} words).
 - {"op":"link","id","from","to","label"} an arrow between two shapes (or a shape and a group's frame) on the same board. Optional dashed.
 Optional "mark" on a box, circle, icon or illustration puts a badge on its corner: "ok" (✓ works, done), "no" (✗ fails, down), "ask" (? unknown, a question), "warn" (! a warning). The badge appears with the shape; to show a state changing, hide the shape and show another one with the new mark.
+Optional "chip":"Acme · 50" on a box, circle, icon or illustration puts a small tag under its label: a count, a size or a detail.
+Optional "level":0.2 on an illustration shows it filled to that level (0 to 1): a database filling with data, a battery charging, a tank of water. Change it with the "fill" action.
 Optional "blocked":true on a link puts a ✗ on it: a connection that does not get through.
 Every shape needs a short label (1 to ${labelWords} words). Optional "color": ${Object.keys(PALETTE).join(', ')}. Use one colour per concept and keep it.
 Icons: ${ICON_NAMES.join(', ')}.${illustrationList}
@@ -96,6 +100,8 @@ BEATS
 - {"highlight": ids, "color": "red"} change colour to show a change of state.
 - {"pulse": ids} a short grow to point at something.
 - {"travel": "<token id>", "along": "<link id>", "color": "amber"} a glowing dot moves along a link: data, signals, money, energy, molecules. Tokens are created automatically.
+- {"fill": "<illustration id>", "to": 0.9} the drawing fills (or empties) to that level, to show something growing or draining.
+- {"tab": "<tabs id>", "to": "Range"} lights another tab, by its name.
 
 TEACHING
 - Every beat must change something on screen that matches its words. Never describe a visual you did not create.
@@ -105,6 +111,7 @@ TEACHING
 - Pick the element that shows the idea best, not a box with words in it:
   amounts that grow, shrink or compare → chart; one striking number → counter; anything with dates → timeline;
   properties side by side → table; before and after, or inside and outside → two groups; a computer, server or app and what runs in it → a window group;
+  several options compared one after another → tabs; a calculation or pipeline step by step → chain; how full or loaded something is → an illustration's level;
   ${illustrationChoice.trimStart()} abstract steps and parts → boxes, circles and icons.
 - Write ${beats.usualMin} to ${beats.usualMax} beats per chapter (never more than ${beats.max}) in plain, friendly language. End with a one-sentence recap beat.`
 

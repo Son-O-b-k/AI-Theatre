@@ -94,6 +94,16 @@ const CASES: Record<string, object[]> = {
     { op: 'beat', say: 'Lots of them.', do: [{ show: ['top', ...ids('k', 8), 'c1', 'c2'] }] },
   ],
 
+  'tabs over a fan-out with chips and fill levels, and a chain of steps': [
+    { op: 'board', title: 'Three ways to shard' },
+    { op: 'el', id: 'ways', kind: 'tabs', items: ['Hash', 'Range', 'Directory'], current: 'Hash' },
+    { op: 'el', id: 'calc', kind: 'chain', parts: ['user id', '[hash]', '÷ 4', 'remainder'], label: 'Proxy' },
+    ...[0, 1, 2, 3].map((n) => ({ op: 'el', id: `s${n}`, kind: 'illustration', art: 'database', label: `Shard ${n}`, below: 'calc', chip: `Customer ${n} · 50`, level: 0.2 })),
+    ...[0, 1, 2, 3].map((n) => ({ op: 'link', id: `l${n}`, from: 'calc', to: `s${n}` })),
+    { op: 'beat', say: 'Each way picks a shard differently.', do: [{ show: ['ways', 'calc', 's0', 's1', 's2', 's3'] }, { tab: 'ways', to: 'Range' }] },
+    { op: 'beat', say: 'One customer outgrows its shard.', do: [{ fill: 's3', to: 95 }] },
+  ],
+
   'a drawing, a chart and a counter side by side': [
     { op: 'board', title: 'Growth', layout: 'row' },
     { op: 'el', id: 'tree', kind: 'illustration', art: 'tree', label: 'A tree' },
@@ -282,12 +292,75 @@ describe('arranging shapes relative to each other', () => {
   })
 
   test('every arrangement also fits vertical and square stages', () => {
-    for (const name of Object.keys(CASES).filter((key) => /fan|four sides|eight shapes|family|frame/.test(key))) {
+    for (const name of Object.keys(CASES).filter((key) => /fan|four sides|eight shapes|family|frame|tabs/.test(key))) {
       for (const format of ['portrait', 'square'] as const) {
         const { scene } = build(CASES[name])
         assert.deepEqual(geometryProblems({ ...scene, format }), [], `${name} (${format})`)
       }
     }
+  })
+})
+
+describe('tabs, steps, tags, levels and the marker look', () => {
+  const keysOf = (scene: Scene, el: string) => compile(scene).keys.filter((key) => key.el === el && key.prop === 'value')
+
+  test('tabs move to the one named, a drawing fills to the level given, and both are written back out', () => {
+    const { scene, warnings } = build(CASES['tabs over a fan-out with chips and fill levels, and a chain of steps'])
+    assert.deepEqual(warnings, [])
+    const resolved = compile(scene)
+    const tabs = resolved.elements.find((el) => el.id === 'ways')!
+    assert.equal(tabs.value, 0, 'Hash is lit at the start')
+    assert.equal(keysOf(scene, 'ways').at(-1)!.v, 1, 'then Range')
+    const shard = resolved.elements.find((el) => el.id === 's3')!
+    assert.equal(shard.value, 0.2)
+    assert.equal(keysOf(scene, 's3').at(-1)!.v, 0.95, 'a percentage is understood')
+    const lines = sceneToLines(scene)
+    assert.match(lines, /"tab":"ways","to":"Range"/)
+    assert.match(lines, /"fill":"s3","to":0.95/)
+    assert.equal(describeAction(scene, scene.beats[1].actions[0]), 'Fills Shard 3 to 95%')
+    assert.equal(describeAction(scene, scene.beats[0].actions[1]), 'Moves Tabs to “Range”')
+  })
+
+  test('tabs sit across the top, above the diagram; a tag under a shape counts as part of it', () => {
+    const { scene } = build(CASES['tabs over a fan-out with chips and fill levels, and a chain of steps'])
+    const resolved = compile(scene)
+    const tabs = resolved.elements.find((el) => el.id === 'ways')!
+    const others = resolved.elements.filter((el) => ['calc', 's0', 's1', 's2', 's3'].includes(el.id))
+    assert.ok(others.every((el) => el.y > tabs.y + 40))
+    assert.deepEqual(geometryProblems(scene), [])
+  })
+
+  test('a drawing filled during the lesson starts empty; names and numbers pick tabs loosely', () => {
+    const { scene } = build([
+      { op: 'board' },
+      { op: 'el', id: 'tank', kind: 'illustration', art: 'database', label: 'Tank' },
+      { op: 'el', id: 'opts', kind: 'tabs', items: ['One way', 'Another way'], current: 2 },
+      { op: 'beat', say: 'It fills.', do: [{ fill: 'tank', to: 0.5 }, { tab: 'opts', to: 'one' }] },
+    ])
+    const resolved = compile(scene)
+    const tank = resolved.elements.find((el) => el.id === 'tank')!
+    assert.equal(tank.kind === 'illustration' && tank.level, 0)
+    assert.equal(resolved.elements.find((el) => el.id === 'opts')!.value, 1)
+    assert.equal(keysOf(scene, 'opts').at(-1)!.v, 0)
+  })
+
+  test('the marker look changes how a lesson is drawn, not where anything goes or when', async () => {
+    const { scene } = build(CASES['tabs over a fan-out with chips and fill levels, and a chain of steps'])
+    const chalk = compile(scene)
+    const marker = compile({ ...scene, look: 'marker' })
+    assert.equal(marker.hand, true)
+    assert.notEqual(marker.background, chalk.background)
+    assert.deepEqual(marker.keys, chalk.keys)
+    assert.deepEqual(marker.elements.map((el) => [el.x, el.y]), chalk.elements.map((el) => [el.x, el.y]))
+
+    const { restyled, inLessonLook } = await import('../project')
+    const output = newOutput('One', scene, { prompt: 'p', provider: 'x', model: 'm', at: '' })
+    const project = { id: 'p', name: 'P', createdAt: '', updatedAt: '', outputs: [{ ...output, scene: { ...scene, keys: chalk.keys } }] }
+    const styled = restyled(project, 'marker')
+    assert.equal(styled.outputs[0].scene.look, 'marker')
+    assert.ok(styled.outputs[0].scene.keys, 'fine-tuned motion is kept')
+    assert.equal(styled.outputs[0].revision, output.revision + 1, 'drawn again by the player')
+    assert.equal(inLessonLook(styled, output).scene.look, 'marker', 'a new chapter follows the lesson')
   })
 })
 

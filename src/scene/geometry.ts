@@ -4,7 +4,7 @@
 import type { Element, ElementOf } from './schema'
 import { lineHeight, textWidth, wrapText } from './text'
 import { photoSize } from './images'
-import { artSize, CHART, counterExtent, GROUP, tableLayout, timelineExtent } from './widgets'
+import { artSize, chainExtent, CHART, CHIP, chipWidth, counterExtent, GROUP, tableLayout, tabsLayout, timelineExtent } from './widgets'
 
 export interface Point {
   x: number
@@ -69,17 +69,23 @@ export function shapeExtent(el: Element): { hw: number; hh: number } | null {
     }
     case 'pin':
       return { hw: PIN_RADIUS, hh: PIN_RADIUS }
+    case 'tabs': {
+      const { width, height } = tabsLayout(el)
+      return { hw: width / 2, hh: height / 2 }
+    }
+    case 'chain':
+      return chainExtent(el)
     case 'link':
     case 'group':
       return null
   }
 }
 
-type Labelled = Exclude<Element, ElementOf<'text' | 'link' | 'group'>>
+type Labelled = Exclude<Element, ElementOf<'text' | 'link' | 'group' | 'tabs'>>
 
 /** Shapes whose label is drawn with them; text needs none, links and groups draw their own. */
 export const hasShapeLabel = (el: Element): el is Labelled =>
-  Boolean(el.label) && el.kind !== 'text' && el.kind !== 'link' && el.kind !== 'group'
+  Boolean(el.label) && el.kind !== 'text' && el.kind !== 'link' && el.kind !== 'group' && el.kind !== 'tabs'
 
 export function labelPosition(el: Labelled): 'below' | 'above' | 'inside' {
   if (el.labelAt) return el.labelAt
@@ -127,7 +133,20 @@ export function bounds({ el, x, y, scale, frame }: Placed): Rect | null {
       y1: Math.max(rect.y1, offset + LABEL_SIZE / 2),
     }
   }
+  const tag = chipOf(el)
+  if (tag) {
+    const half = chipWidth(tag.text) / 2
+    rect = { x0: Math.min(rect.x0, -half), x1: Math.max(rect.x1, half), y0: rect.y0, y1: Math.max(rect.y1, tag.y + CHIP.height / 2) }
+  }
   return { x0: x + rect.x0 * scale, y0: y + rect.y0 * scale, x1: x + rect.x1 * scale, y1: y + rect.y1 * scale }
+}
+
+/** A shape's chip and the height of its centre: under the label when the label is below, else under the shape. */
+export function chipOf(el: Element): { text: string; y: number } | null {
+  if (!('chip' in el) || !el.chip) return null
+  const { hh } = shapeExtent(el)!
+  const below = hasShapeLabel(el) && labelPosition(el) === 'below' ? labelOffset(el) + LABEL_SIZE / 2 : hh
+  return { text: el.chip, y: below + CHIP.gap + CHIP.height / 2 }
 }
 
 /** The frame drawn around a group's members: around them all, with room for the title at the top. */

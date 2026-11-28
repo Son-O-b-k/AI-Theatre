@@ -39,6 +39,11 @@ export const stageOf = (format: Format | undefined): StageFrame => STAGES[format
 
 export const FORMAT_LABELS: Record<Format, string> = { landscape: 'Landscape 16:9', portrait: 'Vertical 9:16', square: 'Square 1:1' }
 
+/** How a lesson is drawn: chalk on a slate board, or hand-lettered marker on a black one. */
+export const LOOKS = ['chalk', 'marker'] as const
+export type Look = (typeof LOOKS)[number]
+export const LOOK_LABELS: Record<Look, string> = { chalk: 'Chalkboard', marker: 'Marker on black' }
+
 export const LAYOUTS = ['row', 'column', 'grid', 'flow', 'cycle', 'tree'] as const
 export type Layout = (typeof LAYOUTS)[number]
 
@@ -66,6 +71,16 @@ const mark = z
     return (MARKS as readonly string[]).includes(name) ? (name as (typeof MARKS)[number]) : MARK_ALIASES[name]
   })
   .optional()
+
+/** A small tag under a shape: a count or detail ("Acme · 50"). */
+const chip = z.preprocess((value) => (value == null || String(value).trim() === '' ? undefined : String(value).trim().slice(0, 32)), z.string().optional())
+/** How full a drawing is, 0..1 (percentages are understood). */
+const level = z.coerce
+  .number()
+  .transform((n) => (n > 1 ? n / 100 : n))
+  .pipe(z.number().min(0).max(1))
+  .optional()
+  .catch(undefined)
 
 const ids = z.union([z.string(), z.array(z.string()).min(1)]).transform((value) => (Array.isArray(value) ? value : [value]))
 
@@ -104,9 +119,9 @@ const bar = z.union([
 const moment = z.object({ at: z.coerce.string(), label: z.coerce.string().default('') })
 
 export const ElementSchema = z.discriminatedUnion('kind', [
-  z.object({ ...common, kind: z.literal('box'), w: z.number().min(60).max(400).default(170), h: z.number().min(40).max(300).default(110), icon, mark }),
-  z.object({ ...common, kind: z.literal('circle'), r: z.number().min(20).max(150).default(55), icon, mark }),
-  z.object({ ...common, kind: z.literal('icon'), icon: z.string().refine((n) => n in ICONS, 'unknown icon'), size: z.number().min(24).max(200).default(72), mark }),
+  z.object({ ...common, kind: z.literal('box'), w: z.number().min(60).max(400).default(170), h: z.number().min(40).max(300).default(110), icon, mark, chip }),
+  z.object({ ...common, kind: z.literal('circle'), r: z.number().min(20).max(150).default(55), icon, mark, chip }),
+  z.object({ ...common, kind: z.literal('icon'), icon: z.string().refine((n) => n in ICONS, 'unknown icon'), size: z.number().min(24).max(200).default(72), mark, chip }),
   z.object({ ...common, kind: z.literal('dot'), r: z.number().min(4).max(30).default(10) }),
   z.object({
     ...common,
@@ -126,6 +141,9 @@ export const ElementSchema = z.discriminatedUnion('kind', [
     size: z.number().min(80).max(420).default(190),
     accent: color.optional(),
     mark,
+    chip,
+    /** How full it is (a database filling up, a battery draining); "fill" actions change it. */
+    level,
   }),
   /** A bar chart whose bars grow in, with real numbers. */
   z.object({ ...common, kind: z.literal('chart'), bars: z.array(bar).min(1).max(12), unit: z.string().max(12).optional() }),
@@ -177,6 +195,18 @@ export const ElementSchema = z.discriminatedUnion('kind', [
     spots: z.record(z.string(), z.tuple([z.number(), z.number()])).optional(),
     credit: z.string().max(200).optional(),
   }),
+  /**
+   * The options being compared, as tabs across the top of the board ("Hash", "Range", "Directory");
+   * one is lit, and "tab" actions move to another.
+   */
+  z.object({
+    ...common,
+    kind: z.literal('tabs'),
+    items: z.array(z.coerce.string().trim().min(1).max(28)).min(2).max(6),
+    current: z.union([z.number(), z.string()]).optional(),
+  }),
+  /** A short chain of steps read left to right ("user id → hash → ÷ 4 → shard"); "[hash]" is boxed. */
+  z.object({ ...common, kind: z.literal('chain'), parts: z.array(z.coerce.string().trim().min(1).max(24)).min(2).max(6) }),
   /** A marker on a place in a photo, with its label; it moves with the photo when it zooms. */
   z.object({ ...common, kind: z.literal('pin'), on: z.string(), spot: z.coerce.string(), at: z.tuple([z.number(), z.number()]).optional() }),
 ])
@@ -203,7 +233,7 @@ export type Element = DistributiveOmit<ElementInput, 'color'> & { color: string;
 export type ElementKind = Element['kind']
 export type ElementOf<K extends ElementKind> = Extract<Element, { kind: K }>
 
-export const ANIMATED_PROPS = ['x', 'y', 'rotation', 'scale', 'opacity', 'draw', 'color'] as const
+export const ANIMATED_PROPS = ['x', 'y', 'rotation', 'scale', 'opacity', 'draw', 'color', 'value'] as const
 export type AnimatedProp = (typeof ANIMATED_PROPS)[number]
 
 export interface Visual {
@@ -214,6 +244,8 @@ export interface Visual {
   opacity: number
   draw: number
   color: string
+  /** What a shape shows that changes: a drawing's fill level, the lit tab. */
+  value: number
 }
 
 /** An element placed by the layout engine, with its starting values. */
@@ -233,6 +265,12 @@ const ACTIONS = {
   travel: z
     .object({ travel: id, along: z.string(), color: color.optional(), reverse: z.boolean().default(false) })
     .transform((a) => ({ type: 'travel' as const, token: a.travel, along: a.along, color: a.color, reverse: a.reverse })),
+  /** Fills a drawing to a level (0..1, or a percentage). */
+  fill: z
+    .object({ fill: id, to: level.unwrap().catch(1).default(1) })
+    .transform((a) => ({ type: 'fill' as const, ids: [a.fill], to: a.to })),
+  /** Lights another tab, by its name or its number (from 1). */
+  tab: z.object({ tab: id, to: z.union([z.number(), z.string()]) }).transform((a) => ({ type: 'tab' as const, ids: [a.tab], to: a.to })),
   /** Moves in on a place in a photo (a spot or a pin on it), or back out when no spot is named. */
   zoom: z
     .object({ zoom: id, spot: z.coerce.string().optional(), scale: z.coerce.number().min(1.2).max(4).optional().catch(undefined) })
@@ -287,6 +325,8 @@ export interface Scene {
   voice?: string
   /** The stage's shape; landscape when unset (every lesson made before formats existed). */
   format?: Format
+  /** How it is drawn; chalk when unset. Changes nothing about layout or timing. */
+  look?: Look
   /** Keyframes edited in Theatre Studio; when present they replace the ones derived from the beats. */
   keys?: Key[]
   /** Derived from the beats by finalizeScene, kept for the player and transcript. */
@@ -338,7 +378,7 @@ export function parseOp(raw: unknown): SceneOp {
   }
 }
 
-const KINDS = ['box', 'circle', 'icon', 'text', 'dot', 'illustration', 'chart', 'counter', 'timeline', 'table', 'group', 'photo', 'pin']
+const KINDS = ['box', 'circle', 'icon', 'text', 'dot', 'illustration', 'chart', 'counter', 'timeline', 'table', 'group', 'photo', 'pin', 'tabs', 'chain']
 
 const KIND_ALIASES: Record<string, string> = {
   rect: 'box',
@@ -367,6 +407,12 @@ const KIND_ALIASES: Record<string, string> = {
   events: 'timeline',
   matrix: 'table',
   grid: 'table',
+  tab: 'tabs',
+  options: 'tabs',
+  stepper: 'tabs',
+  steps: 'chain',
+  pipeline: 'chain',
+  formula_steps: 'chain',
   container: 'group',
   window: 'group',
   zone: 'group',
@@ -408,7 +454,7 @@ function normalizeFields(kind: string, written: Record<string, unknown>): Record
   switch (kind) {
     case 'illustration': {
       const art = String(pick('art', 'name', 'src', 'icon') ?? '')
-      if (art in ILLUSTRATIONS) return { ...fields, kind, art, mark: pick('mark', 'status', 'badge') }
+      if (art in ILLUSTRATIONS) return { ...fields, kind, art, mark: pick('mark', 'status', 'badge'), chip: pick('chip', 'tag', 'detail'), level: pick('level', 'fill', 'full') }
       const label = fields.label ?? art.replace(/[-_]+/g, ' ')
       return art in ICONS ? { ...fields, kind: 'icon', icon: art, label, size: 96 } : { ...fields, kind: 'box', label }
     }
@@ -420,8 +466,12 @@ function normalizeFields(kind: string, written: Record<string, unknown>): Record
       return { ...fields, kind, columns: pick('columns', 'headers', 'header', 'cols'), rows: pick('rows', 'data', 'cells') }
     case 'group':
       return { ...fields, kind, contains: pick('contains', 'members', 'children', 'items', 'ids') }
+    case 'tabs':
+      return { ...fields, kind, items: pick('items', 'tabs', 'options', 'labels'), current: pick('current', 'active', 'selected') }
+    case 'chain':
+      return { ...fields, kind, parts: pick('parts', 'steps', 'items') }
     default:
-      return { ...fields, kind, mark: pick('mark', 'status', 'badge') }
+      return { ...fields, kind, mark: pick('mark', 'status', 'badge'), chip: pick('chip', 'tag', 'detail') }
   }
 }
 

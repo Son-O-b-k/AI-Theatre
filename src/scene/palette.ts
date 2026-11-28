@@ -35,6 +35,9 @@ export function accentFor(color: string): string {
   return warm.includes(color.toLowerCase()) ? PALETTE.blue : PALETTE.amber
 }
 
+/** The marker look's board: near black, so the colours glow like ink on a dark screen. */
+export const MARKER_BACKGROUND = '#0e1011'
+
 /** Common colour words models use that are not in the palette, mapped to the closest one. */
 const ALIASES: Record<string, ColorName> = {
   yellow: 'amber',

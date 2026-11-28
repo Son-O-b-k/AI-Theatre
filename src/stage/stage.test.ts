@@ -13,8 +13,8 @@ const { document } = parseHTML('<!doctype html><html><body><div id="host"></div>
 ;(globalThis as { document?: unknown }).document = document
 const { SvgStage } = await import('./SvgStage')
 
-function stage(lines: object[]): { svg: SVGSVGElement; scene: Scene } {
-  let scene = emptyScene()
+function stage(lines: object[], look?: Scene['look']): { svg: SVGSVGElement; scene: Scene } {
+  let scene: Scene = { ...emptyScene(), look }
   for (const line of lines) scene = applyOp(scene, parseOp(line), (message) => assert.fail(message))
   scene = finalizeScene(scene)
   const resolved = compile(scene)
@@ -63,5 +63,38 @@ describe('diagram pieces', () => {
     assert.equal(blocked.getAttribute('data-mark'), 'no')
     assert.equal(blocked.getAttribute('visibility'), 'visible')
     assert.equal(node(svg, 'in').querySelector('[data-mark]'), null)
+  })
+
+  test("a drawing's level rises inside it; tabs light the current one; tags show under shapes", () => {
+    const { svg } = stage([
+      { op: 'board', title: 'Data' },
+      { op: 'el', id: 'ways', kind: 'tabs', items: ['Hash', 'Range'], current: 'Range' },
+      { op: 'el', id: 'db', kind: 'illustration', art: 'database', label: 'Orders', level: 0.25, chip: 'Acme · 50' },
+      { op: 'beat', say: 'It is a quarter full.', do: [{ show: ['ways', 'db'] }] },
+    ])
+    const db = node(svg, 'db')
+    const liquid = db.querySelector('[clip-path] rect')!
+    const height = Number(liquid.getAttribute('height'))
+    const art = Number(liquid.getAttribute('y')) + height
+    assert.ok(Math.abs(height / art - 0.25) < 0.01, 'a quarter of the drawing')
+    assert.ok(db.querySelector('clipPath')!.children.length > 0, 'clipped to the drawing itself')
+    assert.match(db.textContent!, /Acme · 50/)
+    const lit = [...node(svg, 'ways').querySelectorAll('rect[fill-opacity="0.22"]')].map((rect) => rect.getAttribute('opacity'))
+    assert.deepEqual(lit, ['0', '1'])
+  })
+
+  test('the marker look letters labels in capitals, fitted to the room the layout gave them', () => {
+    const lines = [
+      { op: 'board', title: 'Data' },
+      { op: 'el', id: 'db', kind: 'illustration', art: 'database', label: 'Orders' },
+      { op: 'beat', say: 'A database.', do: [{ show: 'db' }] },
+    ]
+    const chalk = node(stage(lines).svg, 'db').querySelector('text')!
+    const marker = node(stage(lines, 'marker').svg, 'db').querySelector('text')!
+    assert.equal(chalk.textContent, 'Orders')
+    assert.equal(chalk.getAttribute('textLength'), null)
+    assert.equal(marker.textContent, 'ORDERS')
+    assert.match(marker.getAttribute('font-family')!, /Gochi Hand/)
+    assert.ok(Number(marker.getAttribute('textLength')) > 0)
   })
 })

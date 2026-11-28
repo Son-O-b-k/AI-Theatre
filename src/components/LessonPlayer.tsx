@@ -23,6 +23,8 @@ import {
   RectangleHorizontal,
   RectangleVertical,
   Square as SquareShape,
+  Highlighter,
+  Presentation,
 } from 'lucide-react'
 import { useEffect, useRef, useState, type MutableRefObject, type PointerEvent } from 'react'
 import type { Brand, VoiceInfo } from '../../shared/protocol'
@@ -34,7 +36,7 @@ import { theatreProjectId, type Output } from '../project'
 import { brandResolved, brandTheatreState } from '../scene/brand'
 import { compile } from '../scene/compile'
 import { emptyScene } from '../scene/scene'
-import { FORMAT_LABELS, FORMATS, SCENE_VERSION, STAGES, type Cue, type Format, type Scene } from '../scene/schema'
+import { FORMAT_LABELS, FORMATS, LOOK_LABELS, LOOKS, SCENE_VERSION, STAGES, type Cue, type Format, type Look, type Scene } from '../scene/schema'
 import { fromTheatreState, type TheatreState } from '../scene/theatre'
 import { mountScene, type Mounted } from '../stage/mount'
 import { Player } from '../stage/Player'
@@ -85,10 +87,14 @@ interface Props {
   /** The lesson's stage shape, and changing it (every chapter is laid out again). */
   format: Format
   onFormatChange(format: Format): void
+  /** How the lesson is drawn, and changing it (layout and timing stay). */
+  look: Look
+  onLookChange(look: Look): void
   className?: string
 }
 
 const FORMAT_ICONS = { landscape: RectangleHorizontal, portrait: RectangleVertical, square: SquareShape }
+const LOOK_ICONS = { chalk: Presentation, marker: Highlighter }
 
 /** Height of the control bar plus the gap above it. */
 const CONTROLS_HEIGHT = 64
@@ -508,6 +514,13 @@ export function LessonPlayer(props: Props) {
                 onSelect={() => props.onFormatChange(format)}
               >
                 {FORMAT_LABELS[format]}
+              </MenuItem>
+            ))}
+            <MenuSeparator />
+            <MenuLabel>Look</MenuLabel>
+            {LOOKS.map((look) => (
+              <MenuItem key={look} icon={LOOK_ICONS[look]} checked={look === props.look} disabled={props.recording} onSelect={() => props.onLookChange(look)}>
+                {LOOK_LABELS[look]}
               </MenuItem>
             ))}
             <MenuSeparator />

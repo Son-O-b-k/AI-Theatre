@@ -9,7 +9,7 @@ import { bounds, groupFrame, LINK_LABEL_SIZE, linkGeometry, type Placed, type Po
 import { THEME } from '../scene/palette'
 import { ANIMATED_PROPS, STAGES, type ElementOf, type SceneElement, type Visual } from '../scene/schema'
 import { GROUP } from '../scene/widgets'
-import { buildShape, labelText, markBadge, type Ink } from './elements'
+import { buildShape, handLettering, labelText, MARKER_FONT, MARKER_SCALE, markBadge, type Ink } from './elements'
 import { pathLength, reveal, roundedRect, seedOf, sketchLine } from './sketch'
 import { create, setAttributes, SVG_NS, tree, type Tree } from './svg'
 
@@ -36,6 +36,7 @@ interface StageNode {
   signature: string
   root: SVGGElement
   draw?: (progress: number) => void
+  value?: (value: number) => void
   /** A link's line or a group's frame, redrawn when the shapes it depends on move. */
   stroke?: SVGPathElement
   /** Arrowhead, drawn as its own shape so it takes the element's colour in every browser. */
@@ -115,7 +116,7 @@ export class SvgStage {
     this.resize(scene.stage)
     this.backdrop.setAttribute('fill', scene.background)
     this.svg.style.setProperty('--stage-bg', scene.background)
-    const ink = scene.ink ?? DEFAULT_INK
+    const ink: Ink = { ...(scene.ink ?? DEFAULT_INK), ...(scene.hand && { hand: true }) }
     if (scene.logo) this.logo.setAttribute('href', scene.logo)
     this.logo.setAttribute('visibility', scene.logo ? 'visible' : 'hidden')
 
@@ -157,6 +158,7 @@ export class SvgStage {
     if (node.el.kind === 'group') return this.drawGroup(node)
     node.root.setAttribute('transform', `translate(${visual.x} ${visual.y}) rotate(${visual.rotation}) scale(${visual.scale})`)
     node.draw?.(visual.draw)
+    node.value?.(visual.value ?? node.el.value ?? 0)
     this.placements.set(id, { el: node.el, x: visual.x, y: visual.y, scale: visual.scale })
     this.dependants.get(id)?.forEach((dependant) => (dependant.el.kind === 'link' ? this.drawLink(dependant) : this.drawGroup(dependant)))
     if (id === this.selected) this.drawSelection()
@@ -228,6 +230,7 @@ export class SvgStage {
     if (el.id === this.selected) this.drawSelection()
     node.stroke.setAttribute('d', sketchLine(outline, seedOf(el.id)))
     ;(node.root.firstChild as SVGPathElement).setAttribute('d', outline)
+    const lettering = node.label?.getAttribute('font-family') === MARKER_FONT ? MARKER_SCALE : 1
     if (el.style === 'window') {
       // A title bar across the top, the title in its middle and three dots at its right.
       const band = GROUP.label * scale + 8 * scale
@@ -235,9 +238,9 @@ export class SvgStage {
       const { x0, y0, x1 } = frame
       node.bar?.setAttribute('d', `M ${x0} ${y0 + band} V ${y0 + r} Q ${x0} ${y0} ${x0 + r} ${y0} H ${x1 - r} Q ${x1} ${y0} ${x1} ${y0 + r} V ${y0 + band} Z`)
       node.dots?.setAttribute('transform', `translate(${x1 - 26 * scale} ${y0 + band / 2}) scale(${scale})`)
-      if (node.label) setAttributes(node.label, { x: (x0 + x1) / 2, y: y0 + band / 2, 'font-size': GROUP.text * 0.8 * scale })
+      if (node.label) setAttributes(node.label, { x: (x0 + x1) / 2, y: y0 + band / 2, 'font-size': GROUP.text * 0.8 * scale * lettering })
     } else if (node.label) {
-      setAttributes(node.label, { x: frame.x0 + 22 * scale, y: frame.y0 + (GROUP.label * scale) / 2 + 8 * scale, 'font-size': GROUP.text * scale })
+      setAttributes(node.label, { x: frame.x0 + 22 * scale, y: frame.y0 + (GROUP.label * scale) / 2 + 8 * scale, 'font-size': GROUP.text * scale * lettering })
     }
   }
 
@@ -298,19 +301,19 @@ function build(el: SceneElement, signature: string, ink: Ink): StageNode {
     root.append(node.stroke)
     if (el.label) {
       node.label = create('text', {
-        'font-weight': 700,
+        ...handLettering(ink, GROUP.text, 700),
         'dominant-baseline': 'central',
         fill: 'currentColor',
         ...(titled && { 'text-anchor': 'middle', 'letter-spacing': '0.12em' }),
       })
-      node.label.textContent = titled ? el.label.toUpperCase() : el.label
+      node.label.textContent = titled || ink.hand ? el.label.toUpperCase() : el.label
       root.append(node.label)
     }
     return node
   }
 
   const part = buildShape(el, ink)
-  return { el, signature, root: part.root, draw: part.draw, label: part.label }
+  return { el, signature, root: part.root, draw: part.draw, value: part.value, label: part.label }
 }
 
 function placeHead(head: SVGPathElement, before: Point, tip: Point): void {

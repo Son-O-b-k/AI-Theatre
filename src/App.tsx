@@ -34,9 +34,9 @@ import { useProjects } from './hooks/useProjects'
 import { useProviders } from './hooks/useProviders'
 import { useVoice } from './hooks/useVoice'
 import { BROWSER_VOICE, unrecorded } from './narration'
-import { editNarration, editScene, fineTuned, lessonFormat, reformatted, type Output, type Project } from './project'
+import { editNarration, editScene, fineTuned, lessonFormat, reformatted, restyled, type Output, type Project } from './project'
 import { emptyScene } from './scene/scene'
-import { DEFAULT_FORMAT, FORMATS, SCENE_VERSION, type Format } from './scene/schema'
+import { DEFAULT_FORMAT, FORMATS, SCENE_VERSION, type Format, type Look } from './scene/schema'
 import { DEFAULT_LANGUAGE } from '../shared/languages'
 
 /** While fine-tuning motion, the stage sits between Studio's outline (left), details panel (right) and timeline (bottom). */
@@ -202,6 +202,12 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
     const tuned = fineTuned(project).length
     if (tuned > 0 && !confirm(`Changing the shape lays every chapter out again, and the motion you fine-tuned in ${tuned === 1 ? '1 chapter' : `${tuned} chapters`} will be lost. Change it?`)) return
     projects.update((p) => reformatted(p, next))
+  }
+
+  /** Draws every chapter another way; nothing is laid out again, so nothing is lost. */
+  const changeLook = (next: Look) => {
+    if (!project || generator.busy) return
+    projects.update((p) => restyled(p, next))
   }
 
   const changeVoice = (next: string) => {
@@ -473,6 +479,8 @@ export function App({ account, onAccountChange, onSignOut, initialNotice }: Prop
               recording={generator.busy}
               format={currentFormat}
               onFormatChange={changeFormat}
+              look={project?.look ?? 'chalk'}
+              onLookChange={changeLook}
               className={layout.editing === 'motion' ? STUDIO_CLEARANCE : layout.narrow ? STACKED_HEIGHT[currentFormat] : undefined}
             />
 

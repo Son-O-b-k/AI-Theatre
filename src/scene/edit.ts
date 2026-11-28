@@ -4,6 +4,7 @@
 
 import { PALETTE, toHex } from './palette'
 import { fitLabel } from './scene'
+import { tabIndex } from './widgets'
 import { describeError, ElementSchema, LinkSchema, type Action, type Element, type ElementKind, type Scene } from './schema'
 
 export const KIND_NAMES: Record<ElementKind, string> = {
@@ -21,6 +22,8 @@ export const KIND_NAMES: Record<ElementKind, string> = {
   link: 'Arrow',
   photo: 'Picture',
   pin: 'Pin',
+  tabs: 'Tabs',
+  chain: 'Steps',
 }
 
 const find = (scene: Scene, id: string) => scene.elements.find((el) => el.id === id)
@@ -70,6 +73,13 @@ export function describeAction(scene: Scene, action: Action): string {
       return `Sends a dot ${action.reverse ? 'back ' : ''}along ${nameOf(scene, action.along)}`
     case 'zoom':
       return action.spot ? `Zooms ${names} in on ${spotName(scene, action.spot)}` : `Zooms ${names} back out`
+    case 'fill':
+      return `Fills ${names} to ${Math.round(action.to * 100)}%`
+    case 'tab': {
+      const tabs = find(scene, action.ids[0])
+      const name = tabs?.kind === 'tabs' ? tabs.items[tabIndex(tabs, action.to)] : String(action.to)
+      return `Moves ${names} to “${name}”`
+    }
   }
 }
 

@@ -6,6 +6,7 @@ import { useState, type ReactNode } from 'react'
 import { KIND_NAMES, nameOf, onBoard, removeElement, setBoardTitle, updateElement } from '../../scene/edit'
 import { ICON_NAMES, ILLUSTRATION_NAMES } from '../../scene/library'
 import { accentFor, PALETTE } from '../../scene/palette'
+import { tabIndex } from '../../scene/widgets'
 import type { Element, Scene } from '../../scene/schema'
 import { Button } from '../ui/Button'
 import { cx } from '../ui/cx'
@@ -93,6 +94,7 @@ function Fields({ scene, el, set }: { scene: Scene; el: Element; set(fields: Rec
           {label}
           <Choice label="Icon" value={el.icon ?? ''} options={['', ...ICON_NAMES]} none="No icon" onPick={(icon) => set({ icon: icon || undefined })} />
           <MarkChoice value={el.mark} set={set} />
+          <TextField label="Tag under it" value={el.chip ?? ''} placeholder="e.g. Acme · 50" onCommit={(chip) => set({ chip: chip || undefined })} />
         </>
       )
     case 'icon':
@@ -101,6 +103,7 @@ function Fields({ scene, el, set }: { scene: Scene; el: Element; set(fields: Rec
           {label}
           <Choice label="Icon" value={el.icon} options={ICON_NAMES} onPick={(icon) => set({ icon })} />
           <MarkChoice value={el.mark} set={set} />
+          <TextField label="Tag under it" value={el.chip ?? ''} placeholder="e.g. Acme · 50" onCommit={(chip) => set({ chip: chip || undefined })} />
         </>
       )
     case 'illustration':
@@ -109,7 +112,15 @@ function Fields({ scene, el, set }: { scene: Scene; el: Element; set(fields: Rec
           {label}
           <Choice label="Drawing" value={el.art} options={ILLUSTRATION_NAMES} onPick={(art) => set({ art })} />
           <Colours label="Second colour" value={el.accent ?? accentFor(el.color)} onPick={(accent) => set({ accent })} />
+          <Choice
+            label="Filled to"
+            value={el.level === undefined ? '' : String(Math.round(el.level * 100))}
+            options={['', ...LEVELS]}
+            labels={Object.fromEntries([['', 'Not filled'], ...LEVELS.map((level) => [level, `${level}%`])])}
+            onPick={(level) => set({ level: level === '' ? undefined : Number(level) / 100 })}
+          />
           <MarkChoice value={el.mark} set={set} />
+          <TextField label="Tag under it" value={el.chip ?? ''} placeholder="e.g. Acme · 50" onCommit={(chip) => set({ chip: chip || undefined })} />
         </>
       )
     case 'text':
@@ -164,6 +175,26 @@ function Fields({ scene, el, set }: { scene: Scene; el: Element; set(fields: Rec
               set({ columns, rows })
             }}
           />
+        </>
+      )
+    case 'tabs':
+      return (
+        <>
+          <TextField label="Tabs, one per line" multiline value={el.items.join('\n')} onCommit={(text) => set({ items: lines(text) })} />
+          <Choice
+            label="Lit at the start"
+            value={String(tabIndex(el, el.current))}
+            options={el.items.map((_, i) => String(i))}
+            labels={Object.fromEntries(el.items.map((item, i) => [String(i), item]))}
+            onPick={(index) => set({ current: Number(index) + 1 })}
+          />
+        </>
+      )
+    case 'chain':
+      return (
+        <>
+          {label}
+          <TextField label="Steps, one per line ([step] is boxed)" multiline value={el.parts.join('\n')} onCommit={(text) => set({ parts: lines(text) })} />
         </>
       )
     case 'group': {
@@ -266,6 +297,8 @@ function TextField(props: { label: string; value: string; placeholder?: string; 
     </label>
   )
 }
+
+const LEVELS = ['0', '10', '25', '50', '75', '90', '100']
 
 const SIDE_LABELS: Record<string, string> = { '': 'Wherever fits', below: 'Below', above: 'Above', left: 'Left of', right: 'Right of' }
 

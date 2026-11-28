@@ -69,6 +69,7 @@ function page(title: string): string {
   @font-face { font-family: Inter; src: url(fonts/inter.woff2) format('woff2'); font-weight: 100 900; }
   @font-face { font-family: Caveat; src: url(fonts/caveat-500.woff2) format('woff2'); font-weight: 500; }
   @font-face { font-family: Caveat; src: url(fonts/caveat-700.woff2) format('woff2'); font-weight: 700; }
+  @font-face { font-family: 'Gochi Hand'; src: url(fonts/gochi-hand-400.woff2) format('woff2'); font-weight: 400; }
   html, body { margin: 0; background: #f4f0e6; }
   #lesson { max-width: 1100px; margin: 0 auto; padding: 16px; }
 </style>
@@ -126,6 +127,7 @@ export async function exportScorm({ project, brand, workspaceId, assetPath, outp
     { name: 'fonts/inter.woff2', data: await font('@fontsource-variable/inter/files/inter-latin-wght-normal.woff2') },
     { name: 'fonts/caveat-500.woff2', data: await font('@fontsource/caveat/files/caveat-latin-500-normal.woff2') },
     { name: 'fonts/caveat-700.woff2', data: await font('@fontsource/caveat/files/caveat-latin-700-normal.woff2') },
+    { name: 'fonts/gochi-hand-400.woff2', data: await font('@fontsource/gochi-hand/files/gochi-hand-latin-400-normal.woff2') },
     ...[...media].map(([name, data]) => ({ name: `media/${name}`, data })),
   )
   onProgress(0.8)

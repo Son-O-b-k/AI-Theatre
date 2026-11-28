@@ -7,7 +7,8 @@
 import { linkGeometry, placedGroup, type Placed } from './geometry'
 import { photoSize, spotIn } from './images'
 import { layoutBoard, type Placement } from './layout'
-import { THEME, toHex } from './palette'
+import { tabIndex } from './widgets'
+import { MARKER_BACKGROUND, THEME, toHex } from './palette'
 import { stageOf, type Action, type ElementOf, type AnimatedProp, type Beat, type Cue, type ElementKind, type Key, type Scene, type SceneElement, type StageFrame, type Visual } from './schema'
 
 export interface Resolved {
@@ -17,6 +18,8 @@ export interface Resolved {
   background: string
   /** Text and label colours, when they differ from the default dark-stage ones (brand.ts). */
   ink?: { text: string; label: string }
+  /** Labels hand-lettered in capitals (the marker look). */
+  hand?: boolean
   /** A logo in the stage's corner (brand.ts). */
   logo?: string
   /** Placed elements with their starting values (everything starts hidden). */
@@ -31,9 +34,9 @@ const BOARD_CHANGE = 0.8
 const BEAT_GAP = 0.5
 const MIN_BEAT = 2.5
 const DIMMED = 0.2
-const DURATION = { fade: 0.6, pop: 0.6, hide: 0.5, highlight: 0.4, pulse: 0.8, focus: 0.4, travel: 1.6, move: 0.8, zoom: 1.4 }
+const DURATION = { fade: 0.6, pop: 0.6, hide: 0.5, highlight: 0.4, pulse: 0.8, focus: 0.4, travel: 1.6, move: 0.8, zoom: 1.4, fill: 1.4, tab: 0.5 }
 /** Elements that draw themselves in (`draw` 0..1), and how long that takes. Photos do when sketched. */
-const DRAW_TIME: Partial<Record<ElementKind, number>> = { link: 0.9, illustration: 2.4, chart: 1.4, counter: 1.6, timeline: 1.6, table: 1.2, photo: 2.8 }
+const DRAW_TIME: Partial<Record<ElementKind, number>> = { link: 0.9, illustration: 2.4, chart: 1.4, counter: 1.6, timeline: 1.6, table: 1.2, photo: 2.8, chain: 1.8 }
 /** How far a zoom moves in, unless the AI says. */
 const ZOOM = 2.4
 const TRAVEL_SAMPLES = 12
@@ -171,6 +174,21 @@ export function compile(scene: Scene): Resolved {
         }
         return d
       }
+
+      case 'fill': {
+        const el = byId.get(action.ids[0])
+        if (el?.kind !== 'illustration') return 0
+        tween(el.id, 'value', t, t + DURATION.fill, action.to)
+        return DURATION.fill
+      }
+
+      case 'tab': {
+        const el = byId.get(action.ids[0])
+        if (el?.kind !== 'tabs') return 0
+        show(el.id, t)
+        tween(el.id, 'value', t, t + DURATION.tab, tabIndex(el, action.to))
+        return DURATION.tab
+      }
     }
   }
 
@@ -255,7 +273,8 @@ export function compile(scene: Scene): Resolved {
   return {
     stage,
     duration: Math.ceil(t + 0.5),
-    background: THEME.background,
+    background: scene.look === 'marker' ? MARKER_BACKGROUND : THEME.background,
+    ...(scene.look === 'marker' && { hand: true }),
     elements,
     keys: scene.keys ?? keys,
     cues,
@@ -307,14 +326,19 @@ function place(scene: Scene, stage: StageFrame): { elements: SceneElement[]; pos
 
   // Pins are drawn over the photos they mark.
   const ordered = [...fitted.filter((el) => el.kind !== 'pin'), ...fitted.filter((el) => el.kind === 'pin')]
+  // A drawing that is filled during the lesson shows its level from the start (empty unless set).
+  const filled = new Set(scene.beats.flatMap((beat) => beat.actions.flatMap((action) => (action.type === 'fill' ? action.ids : []))))
   const elements = ordered.map((el): SceneElement => {
     const first = positions.get(el.id)?.get(Math.min(...el.boards))
-    return { ...el, ...hidden(first ?? { x: stage.width / 2, y: stage.height / 2, scale: 1, curve: 0 }) }
+    const shown = { ...el, ...hidden(first ?? { x: stage.width / 2, y: stage.height / 2, scale: 1, curve: 0 }) }
+    if (el.kind === 'illustration' && (el.level !== undefined || filled.has(el.id))) return { ...shown, level: el.level ?? 0, value: el.level ?? 0 } as SceneElement
+    if (el.kind === 'tabs') return { ...shown, value: tabIndex(el, el.current) }
+    return shown
   })
   return { elements: [...titles, ...elements], positions }
 }
 
-const hidden = ({ x, y, scale, curve }: Placement) => ({ x, y, scale, curve, rotation: 0, opacity: 0, draw: 1 })
+const hidden = ({ x, y, scale, curve }: Placement) => ({ x, y, scale, curve, rotation: 0, opacity: 0, draw: 1, value: 0 })
 
 /**
  * Beats with an extra "show" for anything the AI put on a board but never showed there: shapes
@@ -378,5 +402,5 @@ function entranceTime(el: SceneElement | undefined, fx?: 'fade' | 'pop' | 'draw'
   return (fx ?? defaultEntrance(el)) === 'draw' && drawsIn(el) ? DRAW_TIME[el.kind]! : DURATION.fade
 }
 
-const visualOf = ({ x, y, rotation, scale, opacity, draw, color }: SceneElement): Visual => ({ x, y, rotation, scale, opacity, draw, color })
+const visualOf = ({ x, y, rotation, scale, opacity, draw, color, value }: SceneElement): Visual => ({ x, y, rotation, scale, opacity, draw, color, value })
 const round = (n: number) => Math.round(n * 100) / 100

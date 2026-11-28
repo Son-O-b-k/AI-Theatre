@@ -1,6 +1,6 @@
 // resvg needs TrueType fonts; the font packages ship WOFF. WOFF is TrueType with each table
 // zlib-compressed, so unpacking it is a few lines. Converted files are cached in data/fonts.
-// The stage uses Inter, and Caveat for handwritten notes.
+// The stage uses Inter, Caveat for handwritten notes, and Gochi Hand for the marker look's labels.
 
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
@@ -11,6 +11,7 @@ import { inflateSync } from 'node:zlib'
 const FONTS = [
   ...[400, 500, 600, 700].map((weight) => ({ name: `inter-${weight}`, woff: `@fontsource/inter/files/inter-latin-${weight}-normal.woff` })),
   ...[500, 700].map((weight) => ({ name: `caveat-${weight}`, woff: `@fontsource/caveat/files/caveat-latin-${weight}-normal.woff` })),
+  { name: 'gochi-hand-400', woff: '@fontsource/gochi-hand/files/gochi-hand-latin-400-normal.woff' },
 ]
 
 /** Paths of the stage's fonts as TrueType, converting from the npm packages the first time. */

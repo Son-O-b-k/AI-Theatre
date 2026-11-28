@@ -48,7 +48,7 @@ export function sampleAt(resolved: Resolved, state: TheatreState, t: number): Ma
   const sheet = state.sheetsById[SHEET]
   const visuals = new Map<string, Visual>()
   for (const el of resolved.elements) {
-    const visual: Visual = { x: el.x, y: el.y, rotation: el.rotation, scale: el.scale, opacity: el.opacity, draw: el.draw, color: el.color }
+    const visual: Visual = { x: el.x, y: el.y, rotation: el.rotation, scale: el.scale, opacity: el.opacity, draw: el.draw, color: el.color, value: el.value }
     const overrides = sheet?.staticOverrides.byObject[el.id] ?? {}
     const tracks = sheet?.sequence.tracksByObject[el.id]
     for (const prop of Object.keys(visual) as (keyof Visual)[]) {

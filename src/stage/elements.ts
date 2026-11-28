@@ -3,27 +3,32 @@
 // animates it. Elements that draw themselves in return a `draw` function taking progress 0..1.
 
 import { hexToRgba } from '../scene/color'
-import { hasShapeLabel, innerIcon, LABEL_SIZE, labelOffset, labelPosition, PIN_RADIUS, shapeExtent } from '../scene/geometry'
+import { chipOf, hasShapeLabel, innerIcon, LABEL_SIZE, labelOffset, labelPosition, PIN_RADIUS, shapeExtent } from '../scene/geometry'
 import { photoSize } from '../scene/images'
 import { ICON_GRID, ICONS, ILLUSTRATIONS, type ArtNode } from '../scene/library'
 import { accentFor, PALETTE } from '../scene/palette'
 import type { ElementOf, MARKS, SceneElement } from '../scene/schema'
 import { lineHeight, textWidth, wrapText } from '../scene/text'
-import { artSize, chartLayout, CHART, counterText, TABLE, tableLayout, TIMELINE, timelineLayout } from '../scene/widgets'
+import { artSize, CHAIN, chainParts, chartLayout, CHART, CHIP, chipWidth, counterText, TABLE, tableLayout, TABS, tabsLayout, TIMELINE, timelineLayout } from '../scene/widgets'
 import { pathLength, reveal, roundedRect, seedOf, sketchCircle, sketchLine, sketchOutline } from './sketch'
 import { clamp01, create, lines, type Attributes } from './svg'
 
-export type Ink = { text: string; label: string }
+/** The stage's text colours, and whether labels are hand-lettered (the marker look). */
+export type Ink = { text: string; label: string; hand?: boolean }
 
 export interface Part {
   root: SVGGElement
   /** Shows the element drawing itself in, from 0 (nothing) to 1 (complete). */
   draw?: (progress: number) => void
+  /** Shows what changes during the lesson: a drawing's fill level, the lit tab. */
+  value?: (value: number) => void
   label?: SVGTextElement
 }
 
 /** Handwriting for notes, like chalk on a board. Caveat is shipped with the app and the exports. */
 export const HAND_FONT = "Caveat, 'Segoe Print', cursive"
+/** Bold marker capitals for the marker look's labels (Gochi Hand, SIL Open Font License, shipped too). */
+export const MARKER_FONT = "'Gochi Hand', Caveat, 'Segoe Print', cursive"
 const HAND_SCALE = 1.15
 
 const STROKE = { fill: 'none', stroke: 'currentColor', 'stroke-width': 2.5, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }
@@ -65,7 +70,13 @@ export function buildShape(el: SceneElement, ink: Ink): Part {
       break
     }
     case 'illustration':
-      part.draw = illustration(root, el)
+      Object.assign(part, illustration(root, el))
+      break
+    case 'tabs':
+      part.value = tabs(root, el, ink)
+      break
+    case 'chain':
+      part.draw = chain(root, el)
       break
     case 'chart':
       part.draw = chart(root, el, ink)
@@ -101,6 +112,8 @@ export function buildShape(el: SceneElement, ink: Ink): Part {
     part.label = labelText(el.label!, labelOffset(el), labelPosition(el) === 'inside', ink)
     root.append(part.label)
   }
+  const tag = chipOf(el)
+  if (tag) root.append(chipNode(tag.text, tag.y, ink))
   return part
 }
 
@@ -128,16 +141,33 @@ export function markBadge(mark: Mark, x: number, y: number): SVGGElement {
 export function labelText(text: string, y: number, inside: boolean, ink: Ink, size = LABEL_SIZE): SVGTextElement {
   const label = create('text', {
     y,
-    'font-size': size,
-    'font-weight': 600,
+    ...handLettering(ink, size, 600),
     'text-anchor': 'middle',
     'dominant-baseline': 'central',
     fill: inside ? ink.text : ink.label,
   })
   // A halo in the background colour keeps outside labels readable over lines.
   if (!inside) label.setAttribute('style', 'paint-order: stroke; stroke: var(--stage-bg); stroke-width: 6px; stroke-linejoin: round')
-  label.textContent = text
+  label.textContent = ink.hand ? text.toUpperCase() : text
+  if (ink.hand) fitTo(label, textWidth(text, size))
   return label
+}
+
+/**
+ * Marker capitals take more room than the sans-serif text the layout measured; they are fitted to
+ * that room (squeezed slightly when needed), so they never spill out of a card or onto a neighbour.
+ */
+function fitTo(text: SVGTextElement, width: number): void {
+  text.setAttribute('textLength', String(Math.round(width)))
+  text.setAttribute('lengthAdjust', 'spacingAndGlyphs')
+}
+
+/** Gochi Hand draws small capitals; set larger, they match the sans-serif's height. */
+export const MARKER_SCALE = 1.4
+
+/** Hand-lettered capitals for the marker look, or the stage's sans-serif. */
+export function handLettering(ink: Ink, size: number, weight: number): Attributes {
+  return ink.hand ? { 'font-family': MARKER_FONT, 'font-size': size * MARKER_SCALE, 'font-weight': 400, 'letter-spacing': '0.03em' } : { 'font-size': size, 'font-weight': weight }
 }
 
 function icon(name: string, { size, y }: { size: number; y: number }): SVGGElement {
@@ -154,14 +184,14 @@ function icon(name: string, { size, y }: { size: number; y: number }): SVGGEleme
  * A drawing from the content library, sketched in line by line in the order it was drawn; then its
  * fills wash in. Each filled shape sits on the stage colour, so it covers what is drawn behind it.
  */
-function illustration(root: SVGGElement, el: ElementOf<'illustration'>): Part['draw'] {
+function illustration(root: SVGGElement, el: ElementOf<'illustration'>): Pick<Part, 'draw' | 'value'> {
   const art = ILLUSTRATIONS[el.art]
   const { w, h } = artSize(el)
   if (!art) {
     // Removed from the library since the lesson was made: a card keeps its place and label.
     const outline = roundedRect(-w / 2, -h / 2, w, h, 18)
     root.append(create('path', { d: outline, fill: 'currentColor', 'fill-opacity': 0.14 }), create('path', { d: sketchOutline(outline, seedOf(el.id)), ...STROKE }))
-    return undefined
+    return {}
   }
   const frame = create('g', { transform: `translate(${-w / 2} ${-h / 2}) scale(${w / art.width})`, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
   // Details drawn in a clear colour in the file take the second colour; the rest takes the element's.
@@ -200,12 +230,117 @@ function illustration(root: SVGGElement, el: ElementOf<'illustration'>): Part['d
   add(art.nodes, frame)
   root.append(frame)
 
-  return (progress) => {
+  // A level: the accent colour rising inside the drawing's filled shapes, like liquid in a jar.
+  let value: Part['value']
+  if (el.level !== undefined) {
+    const id = `art-level-${seedOf(`${el.id}|${el.art}|${w}`)}`
+    const clip = create('clipPath', { id })
+    const silhouette = (nodes: ArtNode[], transform: string) => {
+      for (const node of nodes) {
+        const own = [transform, node.attrs.transform].filter(Boolean).join(' ')
+        if (node.children) silhouette(node.children, own)
+        else if (node.fill !== undefined) clip.append(create(node.tag as keyof SVGElementTagNameMap, { ...node.attrs, ...(own ? { transform: own } : {}) }))
+      }
+    }
+    silhouette(art.nodes, '')
+    const defs = create('defs')
+    defs.append(clip)
+    const liquid = create('rect', { x: 0, width: art.width, fill: accent, 'fill-opacity': 0.55 })
+    const surface = create('line', { x1: 0, x2: art.width, stroke: accent, 'stroke-width': 3 })
+    const layer = create('g', { 'clip-path': `url(#${id})` })
+    layer.append(liquid, surface)
+    frame.append(defs, layer)
+    washes.push(layer)
+    value = (level) => {
+      const top = art.height * (1 - clamp01(level))
+      liquid.setAttribute('y', String(top))
+      liquid.setAttribute('height', String(art.height - top))
+      surface.setAttribute('y1', String(top))
+      surface.setAttribute('y2', String(top))
+      layer.setAttribute('visibility', level > 0.005 ? 'visible' : 'hidden')
+    }
+    value(el.level)
+  }
+
+  const draw: Part['draw'] = (progress) => {
     const drawn = clamp01(progress / 0.8) * total
     for (const stroke of strokes) reveal(stroke.node, stroke.length, clamp01((drawn - stroke.start) / stroke.length))
     const wash = String(clamp01((progress - 0.55) / 0.45))
     for (const node of washes) node.setAttribute('opacity', wash)
   }
+  return { draw, value }
+}
+
+/** The options as tabs; the lit one follows the value, fading across as it moves. */
+function tabs(root: SVGGElement, el: ElementOf<'tabs'>, ink: Ink): Part['value'] {
+  const { widths, width } = tabsLayout(el)
+  let x = -width / 2
+  const parts = el.items.map((item, i) => {
+    const w = widths[i]
+    const h = TABS.height
+    const tab = create('g')
+    const lit = create('rect', { x, y: -h / 2, width: w, height: h, rx: 11, fill: 'currentColor', 'fill-opacity': 0.22 })
+    const text = create('text', {
+      x: x + TABS.pad,
+      'dominant-baseline': 'central',
+      'letter-spacing': '0.08em',
+      ...handLettering(ink, TABS.text, 700),
+      fill: 'currentColor',
+    })
+    text.textContent = item.toUpperCase()
+    if (ink.hand) fitTo(text, w - TABS.pad * 2 - TABS.dot * 2 - 16)
+    const dot = create('circle', { cx: x + w - TABS.pad, r: TABS.dot, fill: 'currentColor', 'fill-opacity': 0.5 })
+    tab.append(create('rect', { x, y: -h / 2, width: w, height: h, rx: 11, fill: 'currentColor', 'fill-opacity': 0.07 }), lit, text, dot)
+    root.append(tab)
+    x += w + TABS.gap
+    return { lit, text, dot }
+  })
+  return (value) =>
+    parts.forEach(({ lit, text, dot }, i) => {
+      const on = clamp01(1 - Math.abs(value - i))
+      lit.setAttribute('opacity', String(on))
+      text.setAttribute('opacity', String(0.5 + 0.5 * on))
+      dot.setAttribute('opacity', String(1 - on))
+    })
+}
+
+/** Steps read left to right, joined by arrows, appearing one after another; "[step]" is boxed. */
+function chain(root: SVGGElement, el: ElementOf<'chain'>): Part['draw'] {
+  const parts = chainParts(el)
+  const nodes: SVGElement[] = []
+  parts.forEach((part, i) => {
+    const g = create('g')
+    if (part.boxed) {
+      g.append(create('rect', { x: part.x - part.width / 2, y: -CHAIN.height / 2 + 4, width: part.width, height: CHAIN.height - 8, rx: 10, fill: 'currentColor', 'fill-opacity': 0.12, stroke: 'currentColor', 'stroke-width': 2.5 }))
+    }
+    const text = create('text', { x: part.x, 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': CHAIN.text, 'font-weight': 700, fill: 'currentColor' })
+    text.textContent = part.text
+    g.append(text)
+    if (i > 0) {
+      const from = parts[i - 1].x + parts[i - 1].width / 2 + 10
+      const to = part.x - part.width / 2 - 10
+      g.append(
+        create('path', { d: `M ${from} 0 H ${to}`, ...STROKE, 'stroke-width': 2.5, 'stroke-opacity': 0.7 }),
+        create('path', { d: `M ${to - 9} -6 L ${to} 0 L ${to - 9} 6`, ...STROKE, 'stroke-width': 2.5, 'stroke-opacity': 0.7 }),
+      )
+    }
+    root.append(g)
+    nodes.push(g)
+  })
+  return (progress) => nodes.forEach((node, i) => node.setAttribute('opacity', String(clamp01((progress * nodes.length - i) * 1.5))))
+}
+
+/** A small tag under a shape: a count or a detail. */
+function chipNode(text: string, y: number, ink: Ink): SVGGElement {
+  const width = chipWidth(text)
+  const g = create('g')
+  const label = create('text', { y, 'text-anchor': 'middle', 'dominant-baseline': 'central', 'font-size': CHIP.text, 'font-weight': 600, fill: ink.text })
+  label.textContent = text
+  g.append(
+    create('rect', { x: -width / 2, y: y - CHIP.height / 2, width, height: CHIP.height, rx: 9, fill: 'currentColor', 'fill-opacity': 0.12, stroke: 'currentColor', 'stroke-opacity': 0.35, 'stroke-width': 1.5 }),
+    label,
+  )
+  return g
 }
 
 /**

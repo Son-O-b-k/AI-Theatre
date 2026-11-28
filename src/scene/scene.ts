@@ -22,6 +22,8 @@ const DEFAULT_COLOR: Record<ElementKind, string> = {
   group: 'slate',
   photo: 'slate',
   pin: 'amber',
+  tabs: 'amber',
+  chain: 'white',
 }
 
 /** Things that take a place in a board's layout (notes stack underneath, tokens travel, groups frame). */
@@ -253,6 +255,10 @@ function toWritten(action: Action): Record<string, unknown> {
       return { travel: action.token, along: action.along, ...(action.color && { color: action.color }), ...(action.reverse && { reverse: true }) }
     case 'zoom':
       return { zoom: action.ids[0], ...(action.spot && { spot: action.spot }), ...(action.scale && { scale: action.scale }) }
+    case 'fill':
+      return { fill: action.ids[0], to: action.to }
+    case 'tab':
+      return { tab: action.ids[0], to: action.to }
     default:
       return { [action.type]: one(action.ids) }
   }

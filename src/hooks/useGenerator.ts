@@ -7,7 +7,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Delivery, JobEvent, JobMode, LessonImage, ModelTarget } from '../../shared/protocol'
 import { api } from '../api'
 import { record, unrecorded, withNarration } from '../narration'
-import { retimed, titleFrom, type Output, type Project } from '../project'
+import { inLessonLook, retimed, titleFrom, type Output, type Project } from '../project'
 import type { Format, Scene } from '../scene/schema'
 
 export type Mode = JobMode
@@ -27,12 +27,13 @@ interface Options {
 }
 
 /** Adds a delivered chapter, or replaces the chapter it revises. */
-const applyOutput = (output: Output) => (project: Project) => ({
-  ...project,
-  outputs: project.outputs.some((o) => o.id === output.id)
-    ? project.outputs.map((o) => (o.id === output.id ? output : o))
-    : [...project.outputs, output],
-})
+const applyOutput = (delivered: Output) => (project: Project) => {
+  const output = inLessonLook(project, delivered)
+  return {
+    ...project,
+    outputs: project.outputs.some((o) => o.id === output.id) ? project.outputs.map((o) => (o.id === output.id ? output : o)) : [...project.outputs, output],
+  }
+}
 
 /** Applies recorded clips to the newest copy of a chapter, in case it was edited while recording. */
 const narrateOutput = (id: string, voice: string, clips: Awaited<ReturnType<typeof record>>) => (project: Project) => ({

@@ -56,5 +56,6 @@ function theatreProps(element: SceneElement) {
     opacity: fraction(element.opacity),
     draw: fraction(element.draw),
     color: types.rgba(hexToRgba(element.color)),
+    value: element.value,
   }
 }
