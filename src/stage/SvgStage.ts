@@ -5,7 +5,7 @@
 // what depends on other elements: links between shapes, and group frames around them.
 
 import type { Resolved } from '../scene/compile'
-import { bounds, LINK_LABEL_SIZE, linkGeometry, type Placed, type Point, type Rect } from '../scene/geometry'
+import { bounds, groupFrame, LINK_LABEL_SIZE, linkGeometry, type Placed, type Point, type Rect } from '../scene/geometry'
 import { THEME } from '../scene/palette'
 import { ANIMATED_PROPS, STAGES, type ElementOf, type SceneElement, type Visual } from '../scene/schema'
 import { GROUP } from '../scene/widgets'
@@ -215,20 +215,16 @@ export class SvgStage {
   private drawGroup(node: StageNode): void {
     const el = node.el as ElementOf<'group'>
     const members = el.contains.map((id) => this.placements.get(id)).filter((placed): placed is Placed => Boolean(placed))
-    const rects = members.map((placed) => bounds(placed)).filter((rect): rect is Rect => Boolean(rect))
-    if (rects.length === 0 || !node.stroke) return
+    const frame = groupFrame(members)
+    if (!frame || !node.stroke) return
     const scale = members[0].scale
-    const pad = GROUP.pad * scale
-    const frame = {
-      x0: Math.min(...rects.map((r) => r.x0)) - pad,
-      y0: Math.min(...rects.map((r) => r.y0)) - pad - GROUP.label * scale,
-      x1: Math.max(...rects.map((r) => r.x1)) + pad,
-      y1: Math.max(...rects.map((r) => r.y1)) + pad,
-    }
+    // Arrows to the group end at its frame.
+    this.placements.set(el.id, { el, x: (frame.x0 + frame.x1) / 2, y: (frame.y0 + frame.y1) / 2, scale: 1, frame })
     const outline = roundedRect(frame.x0, frame.y0, frame.x1 - frame.x0, frame.y1 - frame.y0, 22 * scale)
     if (node.drawn === outline) return
     node.drawn = outline
     node.box = frame
+    this.dependants.get(el.id)?.forEach((dependant) => dependant.el.kind === 'link' && this.drawLink(dependant))
     if (el.id === this.selected) this.drawSelection()
     node.stroke.setAttribute('d', sketchLine(outline, seedOf(el.id)))
     ;(node.root.firstChild as SVGPathElement).setAttribute('d', outline)

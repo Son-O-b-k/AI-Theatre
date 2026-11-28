@@ -49,6 +49,7 @@ export function Inspector({ scene, id, onChange, onClose }: Props) {
     body = (
       <>
         <Fields scene={scene} el={el} set={set} />
+        <Position scene={scene} el={el} set={set} />
         <Colours value={el.color} onPick={(color) => set({ color })} />
         <Button
           variant="ghost"
@@ -263,6 +264,29 @@ function TextField(props: { label: string; value: string; placeholder?: string; 
         />
       )}
     </label>
+  )
+}
+
+const SIDE_LABELS: Record<string, string> = { '': 'Wherever fits', below: 'Below', above: 'Above', left: 'Left of', right: 'Right of' }
+
+/** Where a shape goes relative to another on its screen; the layout does the rest. */
+function Position({ scene, el, set }: { scene: Scene; el: Element; set(fields: Record<string, unknown>): void }) {
+  if (el.kind === 'link' || el.kind === 'dot' || el.kind === 'text' || el.kind === 'pin') return null
+  const place = 'place' in el ? el.place : undefined
+  const others = onBoard(scene, el.boards[0]).filter((other) => other.id !== el.id && other.kind !== 'link' && other.kind !== 'dot' && other.kind !== 'text' && other.kind !== 'pin')
+  if (others.length === 0) return null
+  const names = Object.fromEntries(others.map((other) => [other.id, nameOf(scene, other.id)]))
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      <Choice
+        label="Position"
+        value={place?.side ?? ''}
+        options={Object.keys(SIDE_LABELS)}
+        labels={SIDE_LABELS}
+        onPick={(side) => set({ place: side ? { side, of: place?.of ?? others[0].id } : undefined })}
+      />
+      {place && <Choice label="Of" value={place.of} options={others.map((other) => other.id)} labels={names} onPick={(of) => set({ place: { side: place.side, of } })} />}
+    </div>
   )
 }
 

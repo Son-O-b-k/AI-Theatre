@@ -181,12 +181,120 @@ function compileNode(node: Element, paint: Paint, file: string, fail: Fail): Art
     out.fill = tint(own)
     if (isAccent(own.fill)) out.accentFill = true
   }
+  if (tag === 'path' && !Number.isFinite(lengthOf(tag, attrs))) {
+    fail(`${file}: a path cannot be measured (often an arc whose radius is too small to reach its end point; make the radius a little larger): ${String(attrs.get('d')).slice(0, 60)}`)
+    return []
+  }
   if (own.stroke !== 'none') {
     out.stroke = round(own.strokeOpacity * own.opacity)
     out.length = round(lengthOf(tag, attrs))
     if (isAccent(own.stroke)) out.accentStroke = true
   }
   return out.fill === undefined && out.stroke === undefined ? [] : [out]
+}
+
+// ── Measuring a drawing ─────────────────────────────────────────────────────
+// Drawings are trimmed to what is drawn: a drawing in the middle of a big canvas would otherwise
+// take room on the board it does not use, and arrows would stop short of it at the empty edge.
+
+type Matrix = [number, number, number, number, number, number]
+const IDENTITY: Matrix = [1, 0, 0, 1, 0, 0]
+const multiply = (m: Matrix, n: Matrix): Matrix => [
+  m[0] * n[0] + m[2] * n[1],
+  m[1] * n[0] + m[3] * n[1],
+  m[0] * n[2] + m[2] * n[3],
+  m[1] * n[2] + m[3] * n[3],
+  m[0] * n[4] + m[2] * n[5] + m[4],
+  m[1] * n[4] + m[3] * n[5] + m[5],
+]
+const apply = (m: Matrix, [x, y]: number[]) => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]]
+
+function matrixOf(transform: string | number | undefined): Matrix {
+  let m = IDENTITY
+  for (const [, name, args] of String(transform ?? '').matchAll(/(\w+)\(([^)]*)\)/g)) {
+    const v = args.trim().split(/[\s,]+/).map(Number)
+    const rad = (deg: number) => (deg * Math.PI) / 180
+    let t: Matrix = IDENTITY
+    if (name === 'matrix') t = v as Matrix
+    else if (name === 'translate') t = [1, 0, 0, 1, v[0] ?? 0, v[1] ?? 0]
+    else if (name === 'scale') t = [v[0], 0, 0, v[1] ?? v[0], 0, 0]
+    else if (name === 'rotate') {
+      const [c, s] = [Math.cos(rad(v[0])), Math.sin(rad(v[0]))]
+      const [cx, cy] = [v[1] ?? 0, v[2] ?? 0]
+      t = multiply(multiply([1, 0, 0, 1, cx, cy], [c, s, -s, c, 0, 0]), [1, 0, 0, 1, -cx, -cy])
+    } else if (name === 'skewX') t = [1, 0, Math.tan(rad(v[0])), 1, 0, 0]
+    else if (name === 'skewY') t = [1, Math.tan(rad(v[0])), 0, 1, 0, 0]
+    m = multiply(m, t)
+  }
+  return m
+}
+
+/** Points on a shape's outline, enough to find its extent. */
+function outlinePoints(node: ArtNode): number[][] {
+  const a = node.attrs
+  const n = (name: string) => Number.parseFloat(String(a[name] ?? 0)) || 0
+  const ring = (cx: number, cy: number, rx: number, ry: number) =>
+    Array.from({ length: 32 }, (_, i) => [cx + rx * Math.cos((i / 32) * 2 * Math.PI), cy + ry * Math.sin((i / 32) * 2 * Math.PI)])
+  switch (node.tag) {
+    case 'path': {
+      const path = new svgPathProperties(String(a.d ?? ''))
+      const length = path.getTotalLength()
+      const steps = Math.max(8, Math.ceil(length / 2))
+      return Array.from({ length: steps + 1 }, (_, i) => {
+        const p = path.getPointAtLength((i / steps) * length)
+        return [p.x, p.y]
+      })
+    }
+    case 'circle':
+      return ring(n('cx'), n('cy'), n('r'), n('r'))
+    case 'ellipse':
+      return ring(n('cx'), n('cy'), n('rx'), n('ry'))
+    case 'rect':
+      return [[n('x'), n('y')], [n('x') + n('width'), n('y') + n('height')], [n('x') + n('width'), n('y')], [n('x'), n('y') + n('height')]]
+    case 'line':
+      return [[n('x1'), n('y1')], [n('x2'), n('y2')]]
+    case 'polyline':
+    case 'polygon': {
+      const values = String(a.points ?? '').trim().split(/[\s,]+/).map(Number)
+      return values.flatMap((v, i) => (i % 2 ? [] : [[v, values[i + 1]]]))
+    }
+    default:
+      return []
+  }
+}
+
+/** The extent of what is drawn, lines' widths included, in the drawing's own units. */
+function extentOf(nodes: ArtNode[], m: Matrix = IDENTITY, width = 1): Rect | null {
+  let box: Rect | null = null
+  const grow = (other: Rect | null) => {
+    if (!other) return
+    box = box ? { x0: Math.min(box.x0, other.x0), y0: Math.min(box.y0, other.y0), x1: Math.max(box.x1, other.x1), y1: Math.max(box.y1, other.y1) } : other
+  }
+  for (const node of nodes) {
+    const own = multiply(m, matrixOf(node.attrs.transform))
+    const lineWidth = node.attrs['stroke-width'] !== undefined ? Number.parseFloat(String(node.attrs['stroke-width'])) : width
+    if (node.children) {
+      grow(extentOf(node.children, own, lineWidth))
+      continue
+    }
+    const points = outlinePoints(node).map((p) => apply(own, p))
+    if (points.length === 0) continue
+    const half = node.stroke !== undefined ? (lineWidth * Math.hypot(own[0], own[1])) / 2 : 0
+    grow({
+      x0: Math.min(...points.map((p) => p[0])) - half,
+      y0: Math.min(...points.map((p) => p[1])) - half,
+      x1: Math.max(...points.map((p) => p[0])) + half,
+      y1: Math.max(...points.map((p) => p[1])) + half,
+    })
+  }
+  return box
+}
+
+interface Rect {
+  x0: number
+  y0: number
+  x1: number
+  y1: number
 }
 
 interface Entry {
@@ -225,10 +333,19 @@ function compileIllustrations(content: string, fail: Fail): Library['illustratio
       fail(`${file}: needs a viewBox, e.g. viewBox="0 0 200 200"`)
       continue
     }
-    const nodes = Array.from(root.children).flatMap((child) => compileNode(child, inherit(INITIAL, attributesOf(root)), file, fail))
-    if (nodes.length === 0) fail(`${file}: draws nothing`)
-    const shift = box[0] || box[1] ? [{ tag: 'g', attrs: { transform: `translate(${-box[0]} ${-box[1]})` }, children: nodes }] : nodes
-    out[name] = { about: entry.about!.trim(), width: box[2], height: box[3], nodes: shift }
+    const rootPaint = inherit(INITIAL, attributesOf(root))
+    const nodes = Array.from(root.children).flatMap((child) => compileNode(child, rootPaint, file, fail))
+    if (nodes.length === 0) {
+      fail(`${file}: draws nothing`)
+      continue
+    }
+    // Trimmed to what is drawn, with a little room so the outermost lines are not cut.
+    const drawn = extentOf(nodes, IDENTITY, Number.parseFloat(rootPaint.line['stroke-width'] ?? '1')) ?? { x0: box[0], y0: box[1], x1: box[0] + box[2], y1: box[1] + box[3] }
+    const pad = 2
+    const x0 = round(drawn.x0 - pad)
+    const y0 = round(drawn.y0 - pad)
+    const shift = x0 || y0 ? [{ tag: 'g', attrs: { transform: `translate(${-x0} ${-y0})` }, children: nodes }] : nodes
+    out[name] = { about: entry.about!.trim(), width: round(drawn.x1 - drawn.x0 + pad * 2), height: round(drawn.y1 - drawn.y0 + pad * 2), nodes: shift }
   }
   return out
 }

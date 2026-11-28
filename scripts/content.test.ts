@@ -6,10 +6,14 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, test } from 'node:test'
+import type { ArtNode } from '../src/scene/library'
 import { compileContent } from './content'
 
 const SVG = (body: string, root = 'viewBox="0 0 200 200" fill="none" stroke="#000" stroke-width="4"') =>
   `<svg xmlns="http://www.w3.org/2000/svg" ${root}>${body}</svg>`
+
+/** A drawing's own shapes, inside the trim that moves it to the top left. */
+const shapes = (nodes: ArtNode[]) => (nodes.length === 1 && nodes[0].tag === 'g' && /^translate/.test(String(nodes[0].attrs.transform)) ? nodes[0].children! : nodes)
 
 function folder(icons: Record<string, string>, drawings: Record<string, string>, entries?: Record<string, object>) {
   const dir = mkdtempSync(join(tmpdir(), 'content-'))
@@ -40,8 +44,7 @@ describe('content check', () => {
     })
     assert.deepEqual(errors, [])
     const art = library.illustrations.cell
-    assert.deepEqual([art.width, art.height], [200, 200])
-    const [group, line] = art.nodes
+    const [group, line] = shapes(art.nodes)
     const [circle, rect] = group.children!
     assert.equal(group.attrs.transform, 'translate(10 0)')
     assert.deepEqual(circle.attrs, { cx: '50', cy: '50', r: '40', 'stroke-width': '6' })
@@ -61,13 +64,28 @@ describe('content check', () => {
         <circle cx="25" cy="25" r="5" fill="#fc8" stroke="#2563eb"/>`),
     })
     assert.deepEqual(errors, [])
-    const [card, vivid, pale] = library.illustrations.lamp.nodes
+    const [card, vivid, pale] = shapes(library.illustrations.lamp.nodes)
     assert.equal(card.accentFill, undefined)
     assert.equal(card.accentStroke, undefined)
     assert.deepEqual([vivid.accentFill, vivid.fill], [true, 1])
     assert.equal(pale.accentFill, true)
     assert.ok(pale.fill! > 0.3 && pale.fill! < 0.6, `a pale accent is a light wash, not ${pale.fill}`)
     assert.equal(pale.accentStroke, true)
+  })
+
+  test('a drawing is trimmed to what is drawn, so it takes no empty room and arrows meet it', () => {
+    const { library, errors } = folder({}, {
+      small: SVG('<rect x="80" y="60" width="40" height="80" fill="#ccc"/>'),
+      turned: SVG('<rect x="90" y="40" width="20" height="40" transform="rotate(90 100 100)" fill="#ccc"/>'),
+      arc: SVG('<path d="M56 150h92a32 32 0 0 0 2-64 46 46 0 0 0-88-8 36 36 0 0 0-6 72z"/>'),
+    })
+    assert.ok(errors.some((error) => /^arc\.svg: a path cannot be measured/.test(error)), errors.join('\n'))
+    assert.ok(errors.every((error) => error.startsWith('arc.svg')))
+    // 40 x 80 plus the line (4 wide) and 2 of room on every side.
+    assert.deepEqual([library.illustrations.small.width, library.illustrations.small.height], [48, 88])
+    assert.equal(library.illustrations.small.nodes[0].attrs.transform, 'translate(-76 -56)')
+    // Turned on its side, it is wide rather than tall.
+    assert.deepEqual([library.illustrations.turned.width, library.illustrations.turned.height], [48, 28])
   })
 
   test('nothing unsafe gets through: scripts, links and handlers', () => {

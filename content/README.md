@@ -86,7 +86,7 @@ Practical guidance:
 - Use a square canvas of about **200 × 200** (`viewBox="0 0 200 200"`), lines **3 to 5** wide,
   round line ends and joins.
 - Draw with black lines and grey fills, and one clear colour (e.g. `#f80`) for the details.
-- Keep it simple: a few dozen shapes. The drawing is shown about 230 pixels tall.
+- Keep it simple: a few dozen shapes. The drawing is trimmed to what is drawn and shown about 190 pixels on its longer side.
 - Use paths and basic shapes only. Convert text to outlines and expand symbols before exporting.
   Images, text, gradients and effects are not supported and are reported by the check.
 - **Figma**: export the frame as SVG. **Inkscape**: save as Plain SVG.

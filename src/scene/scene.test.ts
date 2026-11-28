@@ -38,6 +38,62 @@ const CASES: Record<string, object[]> = {
   'the prompt example': fromJsonLines(SCENE_SYSTEM.split('EXAMPLE\n')[1].split('\n\n')[0]),
   'the prompt example with numbers': fromJsonLines(SCENE_SYSTEM.split('EXAMPLE WITH NUMBERS\n')[1].split('\n\n')[0]),
 
+  'the prompt example of an arrangement': fromJsonLines(SCENE_SYSTEM.split('EXAMPLE OF AN ARRANGEMENT\n')[1].split('\n\n')[0]),
+
+  'a table fanning out to four shards, with the app to its left': [
+    { op: 'board', title: 'Directory-based sharding' },
+    { op: 'el', id: 'dir', kind: 'table', columns: ['Customer', 'Shard'], rows: [['Acme', '0'], ['Birch', '1'], ['Cobalt', '2'], ['Globex', '3']], label: 'Directory' },
+    { op: 'el', id: 'app', kind: 'illustration', art: 'server-rack', label: 'App', left_of: 'dir' },
+    ...[0, 1, 2, 3].map((n) => ({ op: 'el', id: `s${n}`, kind: 'illustration', art: 'database', label: `Shard ${n}`, below: 'dir' })),
+    { op: 'link', id: 'l', from: 'app', to: 'dir' },
+    ...[0, 1, 2, 3].map((n) => ({ op: 'link', id: `l${n}`, from: 'dir', to: `s${n}` })),
+    { op: 'beat', say: 'The directory says which shard holds each customer.', do: [{ show: ['app', 'dir', 's0', 's1', 's2', 's3'] }] },
+  ],
+
+  'a window frame with arrows to and from it, and a fan-out below': [
+    { op: 'board', title: 'A proxy in front of the shards' },
+    { op: 'el', id: 'chris', kind: 'illustration', art: 'person', label: 'Chris' },
+    { op: 'el', id: 'profile', kind: 'box', label: 'Profile', icon: 'user' },
+    { op: 'el', id: 'feed', kind: 'box', label: 'Feed', right_of: 'profile' },
+    { op: 'el', id: 'likes', kind: 'box', label: 'Likes', right_of: 'feed' },
+    { op: 'el', id: 'server', kind: 'window', label: 'App server', contains: ['profile', 'feed', 'likes'], right_of: 'chris' },
+    { op: 'el', id: 'proxy', kind: 'box', label: 'Proxy', below: 'server' },
+    ...[0, 1, 2, 3].map((n) => ({ op: 'el', id: `s${n}`, kind: 'illustration', art: 'database', label: `Shard ${n}`, below: 'proxy' })),
+    { op: 'link', id: 'in', from: 'chris', to: 'server' },
+    { op: 'link', id: 'down', from: 'server', to: 'proxy' },
+    ...[0, 1, 2, 3].map((n) => ({ op: 'link', id: `l${n}`, from: 'proxy', to: `s${n}` })),
+    { op: 'beat', say: 'Chris uses the app, and a proxy picks the shard.', do: [{ show: ['chris', 'server', 'in', 'down', 'proxy', 's0', 's1', 's2', 's3'] }] },
+  ],
+
+  'a family tree from its links': [
+    { op: 'board', title: 'A family', layout: 'tree' },
+    ...['Grandma', 'Mum', 'Uncle', 'Ada', 'Ben', 'Cara', 'Dan'].map((label, i) => ({ op: 'el', id: `p${i}`, kind: 'circle', label })),
+    ...[[0, 1], [0, 2], [1, 3], [1, 4], [2, 5], [2, 6]].map(([from, to], i) => ({ op: 'link', id: `k${i}`, from: `p${from}`, to: `p${to}`, arrow: false })),
+    { op: 'beat', say: 'Three generations.', do: [{ show: ['p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6'] }] },
+  ],
+
+  'shapes on all four sides of one, each with its own branch': [
+    { op: 'board', title: 'The sun and its neighbours' },
+    { op: 'el', id: 'sun', kind: 'circle', label: 'Sun', r: 70 },
+    { op: 'el', id: 'n', kind: 'box', label: 'North', above: 'sun' },
+    { op: 'el', id: 'n2', kind: 'box', label: 'Far north', above: 'n' },
+    { op: 'el', id: 's', kind: 'box', label: 'South', below: 'sun' },
+    { op: 'el', id: 'e', kind: 'box', label: 'East', right_of: 'sun' },
+    { op: 'el', id: 'e2', kind: 'box', label: 'Under east', below: 'e' },
+    { op: 'el', id: 'w', kind: 'box', label: 'West', left_of: 'sun' },
+    { op: 'el', id: 'w2', kind: 'box', label: 'Under west', below: 'w' },
+    { op: 'beat', say: 'Things all around.', do: [{ show: ['sun', 'n', 'n2', 's', 'e', 'e2', 'w', 'w2'] }] },
+  ],
+
+  'eight shapes under one, and a deep chain, still fit': [
+    { op: 'board', title: 'Many' },
+    { op: 'el', id: 'top', kind: 'box', label: 'Top' },
+    ...ids('k', 8).map((id, i) => ({ op: 'el', id, kind: 'circle', label: `Kid ${i + 1}`, below: 'top' })),
+    { op: 'el', id: 'c1', kind: 'box', label: 'Chain 1', below: 'k5' },
+    { op: 'el', id: 'c2', kind: 'box', label: 'Chain 2', below: 'c1' },
+    { op: 'beat', say: 'Lots of them.', do: [{ show: ['top', ...ids('k', 8), 'c1', 'c2'] }] },
+  ],
+
   'a drawing, a chart and a counter side by side': [
     { op: 'board', title: 'Growth', layout: 'row' },
     { op: 'el', id: 'tree', kind: 'illustration', art: 'tree', label: 'A tree' },
@@ -152,6 +208,87 @@ describe('layout', () => {
       assert.deepEqual(geometryProblems(scene), [])
     })
   }
+})
+
+describe('arranging shapes relative to each other', () => {
+  const at = (scene: Scene, id: string) => compile(scene).elements.find((el) => el.id === id)!
+
+  test('shapes placed below one line up under it, centred; a shape left of it shares its line', () => {
+    const { scene, warnings } = build(CASES['a table fanning out to four shards, with the app to its left'])
+    assert.deepEqual(warnings, [])
+    const dir = at(scene, 'dir')
+    const shards = [0, 1, 2, 3].map((n) => at(scene, `s${n}`))
+    assert.ok(shards.every((shard) => Math.abs(shard.y - shards[0].y) < 1 && shard.y > dir.y), 'the shards are on one line below the table')
+    assert.ok(shards.every((shard, i) => i === 0 || shard.x > shards[i - 1].x), 'in the order they were written')
+    assert.ok(Math.abs((shards[0].x + shards[3].x) / 2 - dir.x) < 2, 'centred under it')
+    const app = at(scene, 'app')
+    assert.ok(app.x < dir.x)
+  })
+
+  test('the ways models write places are understood, and written back the same way', () => {
+    const { scene } = build([
+      { op: 'board' },
+      { op: 'el', id: 'a', kind: 'box', label: 'A' },
+      { op: 'el', id: 'b', kind: 'box', label: 'B', under: 'a' },
+      { op: 'el', id: 'c', kind: 'box', label: 'C', rightOf: 'a' },
+      { op: 'el', id: 'd', kind: 'box', label: 'D', 'left of': 'a' },
+      { op: 'el', id: 'e', kind: 'box', label: 'E', place: { side: 'above', of: 'a' } },
+      { op: 'beat', say: 'Look.', do: [] },
+    ])
+    const place = (id: string) => (scene.elements.find((el) => el.id === id) as { place?: object }).place
+    assert.deepEqual([place('b'), place('c'), place('d'), place('e')], [
+      { side: 'below', of: 'a' },
+      { side: 'right', of: 'a' },
+      { side: 'left', of: 'a' },
+      { side: 'above', of: 'a' },
+    ])
+    const lines = sceneToLines(scene)
+    assert.match(lines, /"below":"a"/)
+    assert.match(lines, /"left_of":"a"/)
+    assert.doesNotMatch(lines, /"place"/)
+  })
+
+  test('places that cannot work are ignored rather than breaking the board', () => {
+    const { scene, warnings } = build([
+      { op: 'board' },
+      { op: 'el', id: 'a', kind: 'box', label: 'A', below: 'b' },
+      { op: 'el', id: 'b', kind: 'box', label: 'B', below: 'a' },
+      { op: 'el', id: 'c', kind: 'box', label: 'C', below: 'nobody' },
+      { op: 'el', id: 'd', kind: 'box', label: 'D', below: 'd' },
+      { op: 'beat', say: 'Look.', do: [{ show: ['a', 'b', 'c', 'd'] }] },
+    ])
+    assert.deepEqual(warnings, [])
+    assert.deepEqual(geometryProblems(scene), [])
+  })
+
+  test('arrows to a frame end at its edge, not inside it', () => {
+    const { scene } = build(CASES['a window frame with arrows to and from it, and a fan-out below'])
+    const resolved = compile(scene)
+    const chris = at(scene, 'chris')
+    const members = ['profile', 'feed', 'likes'].map((id) => at(scene, id))
+    const left = Math.min(...members.map((m) => m.x)) - 100
+    assert.ok(chris.x < left, 'Chris stands left of the frame')
+    assert.ok(Math.abs(chris.y - members[0].y) < 40, 'level with what is in it')
+    assert.deepEqual(checkScene(resolved).filter((issue) => GEOMETRY_PROBLEM.test(issue)), [])
+  })
+
+  test('a position can be set and cleared in the chapter editor', () => {
+    const { scene } = build(CASES['a table fanning out to four shards, with the app to its left'])
+    const moved = updateElement(scene, 'app', { place: { side: 'above', of: 'dir' } })
+    assert.ok(at(moved, 'app').y < at(moved, 'dir').y)
+    assert.deepEqual(geometryProblems(moved), [])
+    const cleared = updateElement(moved, 'app', { place: undefined })
+    assert.equal((cleared.elements.find((el) => el.id === 'app') as { place?: object }).place, undefined)
+  })
+
+  test('every arrangement also fits vertical and square stages', () => {
+    for (const name of Object.keys(CASES).filter((key) => /fan|four sides|eight shapes|family|frame/.test(key))) {
+      for (const format of ['portrait', 'square'] as const) {
+        const { scene } = build(CASES[name])
+        assert.deepEqual(geometryProblems({ ...scene, format }), [], `${name} (${format})`)
+      }
+    }
+  })
 })
 
 describe('vertical and square lessons', () => {

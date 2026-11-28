@@ -4,7 +4,7 @@
 // other, and anything the AI forgot to show is shown when it becomes relevant, so nothing
 // declared is ever missing from the screen.
 
-import { linkGeometry, type Placed } from './geometry'
+import { linkGeometry, placedGroup, type Placed } from './geometry'
 import { photoSize, spotIn } from './images'
 import { layoutBoard, type Placement } from './layout'
 import { THEME, toHex } from './palette'
@@ -195,6 +195,7 @@ export function compile(scene: Scene): Resolved {
   }
 
   const placed = (el: SceneElement | undefined): Placed | null => {
+    if (el?.kind === 'group') return placedGroup(el, el.contains.map((id) => placed(byId.get(id))).filter((member): member is Placed => Boolean(member)))
     const s = el && state.get(el.id)
     return el && s ? { el, x: s.x, y: s.y, scale: s.scale } : null
   }

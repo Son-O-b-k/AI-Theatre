@@ -3,7 +3,7 @@ import { compile } from './compile'
 import { hasShapeLabel, LABEL_SIZE, labelPosition } from './geometry'
 import { textWidth } from './text'
 import { THEME, toHex } from './palette'
-import { describeError, parseAction, SCENE_VERSION, type Action, type Element, type ElementKind, type Scene, type SceneOp } from './schema'
+import { describeError, parseAction, SCENE_VERSION, SIDE_FIELDS, type Action, type Side, type Element, type ElementKind, type Scene, type SceneOp } from './schema'
 
 type Warn = (message: string) => void
 
@@ -226,7 +226,11 @@ export function sceneToLines(scene: Scene): string {
     for (const el of scene.elements.filter((e) => e.boards.includes(index))) {
       if (el.kind === 'dot') continue // created by travel actions
       const { boards: _, ...fields } = el
-      lines.push(el.kind === 'link' ? { op: 'link', ...omitKind(fields) } : { op: 'el', ...fields })
+      if (el.kind === 'link') lines.push({ op: 'link', ...omitKind(fields) })
+      else {
+        const { place, ...rest } = fields as typeof fields & { place?: { side: Side; of: string } }
+        lines.push({ op: 'el', ...rest, ...(place && { [SIDE_FIELDS[place.side]]: place.of }) })
+      }
     }
     for (const beat of scene.beats.filter((b) => b.board === index)) {
       lines.push({ op: 'beat', say: beat.say, do: beat.actions.map(toWritten), ...(beat.hold && { hold: beat.hold }) })

@@ -4,7 +4,7 @@
 // make the geometric ones impossible; the tests use this to prove it, and it scores model output.
 
 import type { Resolved } from './compile'
-import { bounds, linkGeometry, type Rect } from './geometry'
+import { bounds, linkGeometry, placedGroup, type Placed, type Rect } from './geometry'
 import { crossings, MIN_LINK } from './layout'
 import { type AnimatedProp, type Key, type SceneElement } from './schema'
 
@@ -39,18 +39,25 @@ export function checkScene(scene: Resolved): string[] {
         report(`off:${el.id}`, `"${el.id}" (with its label) goes past the edge of the ${width}x${height} stage at ${t}s`)
       }
     }
+    const at = (el: SceneElement): Placed | null =>
+      el.kind === 'group'
+        ? placedGroup(el, el.contains.map((id) => scene.elements.find((member) => member.id === id)).filter((member) => member !== undefined).map((member) => at(member!)).filter((p): p is Placed => p !== null))
+        : { el, x: value(el, 'x', t), y: value(el, 'y', t), scale: value(el, 'scale', t) }
     for (const link of visible) {
       if (link.kind !== 'link') continue
       const ends = [link.from, link.to].map((id) => scene.elements.find((el) => el.id === id))
       if (!ends[0] || !ends[1]) continue
-      const [from, to] = ends.map((el) => ({ el: el!, x: value(el!, 'x', t), y: value(el!, 'y', t), scale: value(el!, 'scale', t) }))
+      const from = at(ends[0])
+      const to = at(ends[1])
+      if (!from || !to) continue
       const path = linkGeometry(from, to, link.curve)
       const start = path.at(0)
       const end = path.at(1)
       if (Math.hypot(end.x - start.x, end.y - start.y) < MIN_LINK) {
         report(`short:${link.id}`, `link "${link.id}" is too short to read at ${t}s`)
       }
-      const others = boxes.filter((box) => box.el.id !== link.from && box.el.id !== link.to).map((box) => box.rect)
+      const inside = new Set([ends[0], ends[1]].flatMap((end) => (end!.kind === 'group' ? end!.contains : [])))
+      const others = boxes.filter((box) => box.el.id !== link.from && box.el.id !== link.to && !inside.has(box.el.id)).map((box) => box.rect)
       if (crossings(path, others) > 0) report(`cross:${link.id}`, `link "${link.id}" crosses another shape at ${t}s`)
     }
 

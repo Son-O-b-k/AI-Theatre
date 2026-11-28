@@ -4,7 +4,7 @@
 import type { Element, ElementOf } from './schema'
 import { lineHeight, textWidth, wrapText } from './text'
 import { photoSize } from './images'
-import { artSize, CHART, counterExtent, tableLayout, timelineExtent } from './widgets'
+import { artSize, CHART, counterExtent, GROUP, tableLayout, timelineExtent } from './widgets'
 
 export interface Point {
   x: number
@@ -24,6 +24,8 @@ export interface Placed {
   x: number
   y: number
   scale: number
+  /** A group's frame, which arrows to the group end at (see groupFrame). */
+  frame?: Rect
 }
 
 export const LABEL_SIZE = 22
@@ -109,7 +111,8 @@ export function innerIcon(el: ElementOf<'box' | 'circle'>): { size: number; y: n
 }
 
 /** Bounding box of the shape and its outside label, or null for strokes and links. */
-export function bounds({ el, x, y, scale }: Placed): Rect | null {
+export function bounds({ el, x, y, scale, frame }: Placed): Rect | null {
+  if (frame) return frame
   const extent = shapeExtent(el)
   if (!extent) return null
   let rect: Rect = { x0: -extent.hw, y0: -extent.hh, x1: extent.hw, y1: extent.hh }
@@ -125,6 +128,26 @@ export function bounds({ el, x, y, scale }: Placed): Rect | null {
     }
   }
   return { x0: x + rect.x0 * scale, y0: y + rect.y0 * scale, x1: x + rect.x1 * scale, y1: y + rect.y1 * scale }
+}
+
+/** The frame drawn around a group's members: around them all, with room for the title at the top. */
+export function groupFrame(members: Placed[]): Rect | null {
+  const rects = members.map(bounds).filter((rect): rect is Rect => Boolean(rect))
+  if (rects.length === 0) return null
+  const scale = members[0].scale
+  const pad = GROUP.pad * scale
+  return {
+    x0: Math.min(...rects.map((r) => r.x0)) - pad,
+    y0: Math.min(...rects.map((r) => r.y0)) - pad - GROUP.label * scale,
+    x1: Math.max(...rects.map((r) => r.x1)) + pad,
+    y1: Math.max(...rects.map((r) => r.y1)) + pad,
+  }
+}
+
+/** A group placed as an arrow end: its frame, around wherever its members are. */
+export function placedGroup(group: Element, members: Placed[]): Placed | null {
+  const frame = groupFrame(members)
+  return frame ? { el: group, x: (frame.x0 + frame.x1) / 2, y: (frame.y0 + frame.y1) / 2, scale: 1, frame } : null
 }
 
 /**
@@ -161,12 +184,17 @@ export interface LinkGeometry {
 
 /** A quadratic curve between two elements, clipped to their outlines. `curve` bends it sideways (-1..1). */
 export function linkGeometry(from: Placed, to: Placed, curve: number): LinkGeometry {
-  const dx = to.x - from.x
-  const dy = to.y - from.y
+  // A frame is big: bend the arrow between the points where it would leave the two ends, not between
+  // their centres, whose middle may be inside the frame.
+  const a = to.frame ? edgePoint(from, to, 0) : from
+  const b = from.frame || to.frame ? edgePoint(to, from, 0) : to
+  const anchorA = from.frame ? edgePoint(from, b, 0) : a
+  const dx = b.x - anchorA.x
+  const dy = b.y - anchorA.y
   const length = Math.hypot(dx, dy) || 1
   const control = {
-    x: (from.x + to.x) / 2 + (-dy / length) * curve * length * 0.5,
-    y: (from.y + to.y) / 2 + (dx / length) * curve * length * 0.5,
+    x: (anchorA.x + b.x) / 2 + (-dy / length) * curve * length * 0.5,
+    y: (anchorA.y + b.y) / 2 + (dx / length) * curve * length * 0.5,
   }
   const start = edgePoint(from, control, 8)
   const end = edgePoint(to, control, 8)

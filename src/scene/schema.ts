@@ -39,7 +39,7 @@ export const stageOf = (format: Format | undefined): StageFrame => STAGES[format
 
 export const FORMAT_LABELS: Record<Format, string> = { landscape: 'Landscape 16:9', portrait: 'Vertical 9:16', square: 'Square 1:1' }
 
-export const LAYOUTS = ['row', 'column', 'grid', 'flow', 'cycle'] as const
+export const LAYOUTS = ['row', 'column', 'grid', 'flow', 'cycle', 'tree'] as const
 export type Layout = (typeof LAYOUTS)[number]
 
 /** Colours are forgiving: near names map to the palette, anything else falls back to the default. */
@@ -69,11 +69,31 @@ const mark = z
 
 const ids = z.union([z.string(), z.array(z.string()).min(1)]).transform((value) => (Array.isArray(value) ? value : [value]))
 
+/**
+ * Where a shape goes relative to another on its board ("below" the directory). Shapes on the same
+ * side of the same shape line up beside each other, centred on it. The layout works out the rest.
+ */
+export const SIDES = ['below', 'above', 'left', 'right'] as const
+export type Side = (typeof SIDES)[number]
+const place = z.object({ side: z.enum(SIDES), of: z.string() }).optional().catch(undefined)
+
+/** How models write it: {"below":"db"}, {"left_of":"db"}, {"rightOf":"db"}, {"under":"db"}. */
+const SIDE_WORDS: Record<string, Side> = {
+  below: 'below', under: 'below', beneath: 'below', underneath: 'below',
+  above: 'above', over: 'above', on_top_of: 'above',
+  left_of: 'left', leftof: 'left', left: 'left', to_the_left_of: 'left',
+  right_of: 'right', rightof: 'right', right: 'right', to_the_right_of: 'right', beside: 'right', next_to: 'right',
+}
+
+/** The written form of a place, for showing the AI its own scene again. */
+export const SIDE_FIELDS: Record<Side, string> = { below: 'below', above: 'above', left: 'left_of', right: 'right_of' }
+
 const common = {
   id,
   color: color.optional(),
   label: z.string().optional(),
   labelAt: z.enum(['below', 'above', 'inside']).optional(),
+  place,
 }
 
 /** A bar of a chart: {"label","value"} or ["label", value]. */
@@ -103,7 +123,7 @@ export const ElementSchema = z.discriminatedUnion('kind', [
     ...common,
     kind: z.literal('illustration'),
     art: z.string().refine((n) => n in ILLUSTRATIONS, 'unknown illustration'),
-    size: z.number().min(80).max(420).default(230),
+    size: z.number().min(80).max(420).default(190),
     accent: color.optional(),
     mark,
   }),
@@ -382,7 +402,8 @@ function normalizeKind(kind: unknown, fields: Record<string, unknown>): string {
  * Accepts the field names models reach for (data, values, events, headers) and turns a drawing
  * that does not exist into the matching icon, or a labelled box, rather than losing it.
  */
-function normalizeFields(kind: string, fields: Record<string, unknown>): Record<string, unknown> {
+function normalizeFields(kind: string, written: Record<string, unknown>): Record<string, unknown> {
+  const fields = withPlace(written)
   const pick = (...names: string[]) => names.map((name) => fields[name]).find((value) => value !== undefined)
   switch (kind) {
     case 'illustration': {
@@ -402,6 +423,19 @@ function normalizeFields(kind: string, fields: Record<string, unknown>): Record<
     default:
       return { ...fields, kind, mark: pick('mark', 'status', 'badge') }
   }
+}
+
+/** Reads {"below":"db"} and its variants into place: {side, of}. Labels inside ("labelAt") are not places. */
+function withPlace(fields: Record<string, unknown>): Record<string, unknown> {
+  if (fields.place !== undefined) return fields
+  for (const [key, value] of Object.entries(fields)) {
+    const side = SIDE_WORDS[key.toLowerCase().replace(/[\s-]+/g, '_')] ?? SIDE_WORDS[key.toLowerCase()]
+    if (side && typeof value === 'string' && value.trim()) {
+      const { [key]: _, ...rest } = fields
+      return { ...rest, place: { side, of: value.trim() } }
+    }
+  }
+  return fields
 }
 
 export function describeError(error: unknown): string {

@@ -45,8 +45,9 @@ EXAMPLE
 {"op":"beat","say":"It pays strong attention to cat and only a little to mat.","do":[{"show":["a1","a2"]},{"travel":"q","along":"a1","color":"amber"},{"highlight":"cat","color":"amber"}]}
 
 BOARDS
-{"op":"board","title":"<short heading>","layout":"row|column|grid|flow|cycle"} starts a new screen. Everything from the previous board disappears.
-- row: a sequence (words, steps in order). column: a stack, ranking or layers. grid: a collection. flow: things joined by links, arranged left to right along the links. cycle: a loop of stages.
+{"op":"board","title":"<short heading>","layout":"row|column|grid|flow|cycle|tree"} starts a new screen. Everything from the previous board disappears.
+- row: a sequence (words, steps in order). column: a stack, ranking or layers. grid: a collection. flow: things joined by links, arranged left to right along the links. cycle: a loop of stages. tree: one thing feeding or splitting into several, top down along the links (a router and its devices, a family tree, an organisation).
+- To design the arrangement yourself, place shapes relative to each other: add "below", "above", "left_of" or "right_of" with the id of another shape on the board. Shapes on the same side of the same shape line up side by side, centred on it, so four shapes "below":"proxy" fan out under the proxy. Shapes placed against nothing stand side by side. The app works out sizes and spacing, keeps everything apart and fits it on screen; you never give coordinates.
 - At most ${shapesPerBoard.usual} shapes per board. Start a new board whenever the picture moves on to a new idea.
 
 ELEMENTS (declare them on the current board before the beats that use them)
@@ -59,11 +60,23 @@ ELEMENTS (declare them on the current board before the beats that use them)
 - {"op":"el","id","kind":"table","columns":["","Cat","Dog"],"rows":[["Legs","4","4"]]} a small table (up to 5 columns, 7 rows), revealed row by row.
 - {"op":"el","id","kind":"group","label":"Before","contains":["a","b"]} a labelled frame around shapes declared on this board. Showing, hiding or focusing the group does the same to the shapes inside. Two groups side by side compare before and after, or inside and outside. Optional "style":"window" draws it as a window with a title bar: a computer, a server, an app, with its parts inside.
 - {"op":"el","id","kind":"text","text"} a short handwritten note, definition or formula shown under the diagram (under ${noteWords} words).
-- {"op":"link","id","from","to","label"} an arrow between two shapes on the same board. Optional dashed.
+- {"op":"link","id","from","to","label"} an arrow between two shapes (or a shape and a group's frame) on the same board. Optional dashed.
 Optional "mark" on a box, circle, icon or illustration puts a badge on its corner: "ok" (✓ works, done), "no" (✗ fails, down), "ask" (? unknown, a question), "warn" (! a warning). The badge appears with the shape; to show a state changing, hide the shape and show another one with the new mark.
 Optional "blocked":true on a link puts a ✗ on it: a connection that does not get through.
 Every shape needs a short label (1 to ${labelWords} words). Optional "color": ${Object.keys(PALETTE).join(', ')}. Use one colour per concept and keep it.
 Icons: ${ICON_NAMES.join(', ')}.${illustrationList}
+
+EXAMPLE OF AN ARRANGEMENT
+{"op":"board","title":"A proxy picks the shard"}
+{"op":"el","id":"user","kind":"illustration","art":"person","label":"Chris"}
+{"op":"el","id":"proxy","kind":"box","label":"Proxy","icon":"network","right_of":"user"}
+{"op":"el","id":"s0","kind":"illustration","art":"database","label":"Shard 0","below":"proxy"}
+{"op":"el","id":"s1","kind":"illustration","art":"database","label":"Shard 1","below":"proxy"}
+{"op":"el","id":"s2","kind":"illustration","art":"database","label":"Shard 2","below":"proxy"}
+{"op":"link","id":"in","from":"user","to":"proxy"}
+{"op":"link","id":"a","from":"proxy","to":"s0"}
+{"op":"link","id":"b","from":"proxy","to":"s1"}
+{"op":"link","id":"c","from":"proxy","to":"s2"}
 
 EXAMPLE WITH NUMBERS
 {"op":"board","title":"Saving earns interest","layout":"row"}
